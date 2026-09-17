@@ -7,25 +7,27 @@ The state machine is defined in spec.md - "Data Model":
                 parsing -> failed   (error_message set)
 """
 
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
 
 
 class UploadResponse(BaseModel):
-    """Returned by POST /api/logs (201) once processing finished.
-
-    TODO(spec.md - "API Contract"): fields -
-        id: int
-        filename: str
-        status: str
-        event_count: int
-        anomaly_count: int
-    """
+    id: int
+    filename: str
+    status: str
+    event_count: int
+    anomaly_count: int
 
 
 class UploadStatus(BaseModel):
-    """Returned by GET /api/uploads/{id}.
+    model_config = ConfigDict(from_attributes=True)
 
-    TODO: fields - id, filename, status, uploaded_at: datetime,
-    processed_at: datetime | None, event_count: int, anomaly_count: int,
-    error_message: str | None.
-    """
+    id: int
+    filename: str
+    status: str
+    uploaded_at: datetime
+    processed_at: datetime | None = None
+    event_count: int
+    anomaly_count: int
+    error_message: str | None = None

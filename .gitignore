@@ -17,3 +17,19 @@ out/
 
 # macOS
 .DS_Store
+
+# Local secrets / environment
+.env
+.env.local
+.env.*.local
+
+# Local-only learning notes (see global CLAUDE.md)
+FOR_SAM.md
+spec.md
+
+
+
+#docker ignore files
+.dockerignore
+web/.dockerignore
+app/.dockerignore
