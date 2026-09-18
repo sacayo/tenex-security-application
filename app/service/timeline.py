@@ -42,6 +42,30 @@ def _bucket_start(timestamp: datetime, width: int) -> datetime:
     return _EPOCH + timedelta(seconds=(seconds // width) * width)
 
 
+def _fill_range(
+    occupied: dict[datetime, dict[str, int]], width: int
+) -> list[TimelineBucket]:
+    """Emit every bucket from the first occupied start to the last, zeros included.
+
+    Occupied-only series collapse a multi-day log into a handful of ticks and
+    hide quiet gaps. Width is already chosen so this stays ≤ MAX_BUCKETS.
+    """
+    if not occupied:
+        return []
+    start = min(occupied)
+    end = max(occupied)
+    step = timedelta(seconds=width)
+    empty = {"event_count": 0, "blocked_count": 0, "anomaly_count": 0}
+    filled: list[TimelineBucket] = []
+    key = start
+    for _ in range(MAX_BUCKETS + 1):
+        filled.append(TimelineBucket(bucket_start=key, **occupied.get(key, empty)))
+        if key >= end:
+            break
+        key = key + step
+    return filled
+
+
 def build_summary(
     upload_id: int,
     events: list[EventOut],
@@ -88,10 +112,7 @@ def build_summary(
         if key in buckets:
             buckets[key]["anomaly_count"] += 1
 
-    timeline = [
-        TimelineBucket(bucket_start=key, **counts)
-        for key, counts in sorted(buckets.items())
-    ]
+    timeline = _fill_range(buckets, width)
 
     categories = Counter(
         event.url_category for event in events if event.url_category is not None

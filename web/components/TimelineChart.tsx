@@ -1,67 +1,197 @@
-import { formatDateTime } from "@/lib/format";
+"use client";
+
+import {
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Scatter,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import type { TooltipProps } from "recharts";
+import { formatUtcTick } from "@/lib/format";
 import type { TimelineBucket } from "@/lib/types";
 
+type ChartRow = {
+  bucket_start: string;
+  event_count: number;
+  blocked: number;
+  anomaly_count: number;
+  /** Same as event_count when anomalies exist; omitted otherwise. */
+  anomalyY?: number;
+};
+
+function toRows(buckets: TimelineBucket[]): ChartRow[] {
+  return buckets.map((b) => {
+    const row: ChartRow = {
+      bucket_start: b.bucket_start,
+      event_count: b.event_count,
+      blocked: Math.min(b.blocked_count, b.event_count),
+      anomaly_count: b.anomaly_count,
+    };
+    if (b.anomaly_count > 0 && b.event_count > 0) {
+      row.anomalyY = b.event_count;
+    }
+    return row;
+  });
+}
+
+function TimelineTooltip({
+  active,
+  payload,
+  label,
+}: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload as ChartRow | undefined;
+  if (!row) return null;
+
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-xs shadow-xl">
+      <p className="mb-1.5 font-medium text-white">
+        {formatUtcTick(String(label))} UTC
+      </p>
+      <dl className="space-y-1 text-white/70">
+        <div className="flex justify-between gap-6">
+          <dt>Events</dt>
+          <dd className="font-medium text-indigo-300">{row.event_count}</dd>
+        </div>
+        <div className="flex justify-between gap-6">
+          <dt>Blocked</dt>
+          <dd className="font-medium text-red-400">{row.blocked}</dd>
+        </div>
+        <div className="flex justify-between gap-6">
+          <dt>Anomalies</dt>
+          <dd className="font-medium text-amber-400">{row.anomaly_count}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+type DotProps = {
+  cx?: number;
+  cy?: number;
+  payload?: ChartRow;
+};
+
+function AnomalyDot({ cx, cy, payload }: DotProps) {
+  if (
+    cx == null ||
+    cy == null ||
+    payload?.anomalyY == null ||
+    !Number.isFinite(cx) ||
+    !Number.isFinite(cy)
+  ) {
+    return null;
+  }
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4}
+      fill="#fbbf24"
+      stroke="#111827"
+      strokeWidth={1}
+    />
+  );
+}
+
 /**
- * Dependency-free timeline bar chart: one bar per time bucket.
- * Indigo = events, red bottom segment = blocked, dot on top = anomalies.
+ * Timeline: event and blocked counts as lines, with anomaly markers on peaks.
+ * Bucket contract comes from GET /summary — no API changes.
  */
 export default function TimelineChart({ buckets }: { buckets: TimelineBucket[] }) {
   if (buckets.length === 0) {
     return <p className="text-sm text-white/50">No events to chart.</p>;
   }
 
-  const max = Math.max(...buckets.map((b) => b.event_count), 1);
-  // Show at most ~8 x-axis labels so they stay readable on small screens.
-  const labelEvery = Math.max(1, Math.ceil(buckets.length / 8));
+  const data = toRows(buckets);
+  const tickEvery = Math.max(1, Math.ceil(buckets.length / 8));
+  const yMax = Math.max(
+    ...data.map((r) => Math.max(r.event_count, r.blocked)),
+    1,
+  );
 
   return (
-    <div>
-      <div className="flex h-40 items-end gap-[2px]">
-        {buckets.map((b, i) => {
-          const heightPct = (b.event_count / max) * 100;
-          const blockedPct =
-            b.event_count > 0 ? (b.blocked_count / b.event_count) * 100 : 0;
-          return (
-            <div
-              key={b.bucket_start}
-              className="relative flex-1"
-              title={`${formatDateTime(b.bucket_start)} — ${b.event_count} events, ${b.blocked_count} blocked, ${b.anomaly_count} anomalies`}
-            >
-              {b.anomaly_count > 0 && (
-                <span
-                  className="absolute -top-2 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-amber-400"
-                  aria-label={`${b.anomaly_count} anomalies`}
-                />
-              )}
-              <div
-                className="flex w-full flex-col justify-end overflow-hidden rounded-t bg-indigo-500/40"
-                style={{ height: `${Math.max(heightPct, 4)}%` }}
-              >
-                <div
-                  className="w-full bg-red-500/80"
-                  style={{ height: `${blockedPct}%` }}
-                />
-              </div>
-              {i % labelEvery === 0 && (
-                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-white/40">
-                  {formatDateTime(b.bucket_start)}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-8 flex flex-wrap gap-4 text-xs text-white/50">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-indigo-500/40" /> events
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-red-500/80" /> blocked
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> anomalies
-        </span>
-      </div>
+    <div className="h-[280px] w-full" role="img" aria-label="Events over time">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={data}
+          margin={{ top: 16, right: 8, left: 0, bottom: 4 }}
+        >
+          <CartesianGrid
+            stroke="#1f2937"
+            strokeDasharray="3 3"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="bucket_start"
+            tickFormatter={formatUtcTick}
+            interval={tickEvery - 1}
+            minTickGap={28}
+            tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }}
+            axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+            tickLine={false}
+          />
+          <YAxis
+            allowDecimals={false}
+            domain={[0, yMax]}
+            ticks={yMax <= 1 ? [0, 1] : undefined}
+            width={40}
+            tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            content={<TimelineTooltip />}
+            cursor={{
+              stroke: "rgba(255,255,255,0.15)",
+              strokeWidth: 1,
+              strokeDasharray: "4 4",
+            }}
+          />
+          <Legend
+            verticalAlign="bottom"
+            height={28}
+            iconSize={10}
+            wrapperStyle={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}
+            formatter={(value) => (
+              <span className="text-white/50">{value}</span>
+            )}
+          />
+          <Line
+            type="monotone"
+            dataKey="event_count"
+            name="Events"
+            stroke="#818cf8"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: "#818cf8", stroke: "#111827", strokeWidth: 1 }}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="blocked"
+            name="Blocked"
+            stroke="#ef4444"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: "#ef4444", stroke: "#111827", strokeWidth: 1 }}
+            isAnimationActive={false}
+          />
+          <Scatter
+            dataKey="anomalyY"
+            name="Anomalies"
+            fill="#fbbf24"
+            shape={<AnomalyDot />}
+            legendType="circle"
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
     </div>
   );
 }

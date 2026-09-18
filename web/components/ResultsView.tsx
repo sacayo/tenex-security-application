@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, getSummary } from "@/lib/api";
 import { waitForUpload } from "@/lib/uploadStatus";
-import { formatDateTime } from "@/lib/format";
+import { describeBucketWidth, formatDateTime } from "@/lib/format";
 import type { SummaryResponse, UploadStatus } from "@/lib/types";
 import AnomalyList from "@/components/AnomalyList";
 import EventsTable from "@/components/EventsTable";
@@ -164,6 +164,8 @@ export default function ResultsView({ uploadId }: { uploadId: number }) {
     );
   }
 
+  const bucketLabel = describeBucketWidth(summary.timeline);
+
   return (
     <div className="animate-[fadeIn_0.4s_ease-out] space-y-6">
       {header}
@@ -173,7 +175,14 @@ export default function ResultsView({ uploadId }: { uploadId: number }) {
       <StatCards summary={summary} />
 
       <section className="rounded-2xl border border-gray-800 bg-gray-900/40 p-5">
-        <h3 className="mb-4 font-semibold text-white">Timeline</h3>
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-semibold text-white">Timeline</h3>
+          {bucketLabel && (
+            <p className="text-xs text-white/40">
+              {bucketLabel} · times in UTC
+            </p>
+          )}
+        </div>
         <TimelineChart buckets={summary.timeline} />
       </section>
 

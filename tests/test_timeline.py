@@ -49,15 +49,21 @@ def test_summary_headline_stats() -> None:
 
 def test_timeline_buckets_are_aligned_and_sorted() -> None:
     summary = build_summary(42, _events(), [])
-    assert len(summary.timeline) == 6
+    # 03:12 → 13:05 spans 15-minute buckets from 03:00 through 13:00 (41 slots).
+    assert len(summary.timeline) == 41
     assert sum(bucket.event_count for bucket in summary.timeline) == 6
     assert sum(bucket.blocked_count for bucket in summary.timeline) == 2
     starts = [bucket.bucket_start for bucket in summary.timeline]
     assert starts == sorted(starts)
+    assert starts == [
+        starts[0] + (starts[1] - starts[0]) * i for i in range(len(starts))
+    ]
     for start in starts:
         assert start.tzinfo is not None
         assert start.second == 0
         assert start.minute % 15 == 0
+    occupied = [b for b in summary.timeline if b.event_count]
+    assert len(occupied) == 6
 
 
 def test_anomaly_count_is_attached_to_its_bucket() -> None:
