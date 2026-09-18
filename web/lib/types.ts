@@ -5,10 +5,13 @@
  * changes, change the other AND spec.md. See AGENTS.md "Division of labor".
  */
 
+/** Lifecycle of an upload, shared by POST /api/logs and GET /api/uploads/{id}. */
+export type UploadState = "uploaded" | "parsing" | "completed" | "failed";
+
 export interface UploadResponse {
   id: number;
   filename: string;
-  status: string;
+  status: UploadState;
   event_count: number;
   anomaly_count: number;
 }
@@ -16,7 +19,7 @@ export interface UploadResponse {
 export interface UploadStatus {
   id: number;
   filename: string;
-  status: "uploaded" | "parsing" | "completed" | "failed";
+  status: UploadState;
   uploaded_at: string;
   processed_at: string | null;
   event_count: number;

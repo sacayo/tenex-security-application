@@ -10,11 +10,19 @@ export default async function ResultsPage({
 
   if (!Number.isInteger(uploadId) || uploadId <= 0) {
     return (
-      <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        Invalid upload id.
-      </p>
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          Invalid upload id.
+        </p>
+      </div>
     );
   }
 
-  return <ResultsView uploadId={uploadId} />;
+  return (
+    <div className="min-h-screen bg-black px-4 py-8">
+      <div className="mx-auto max-w-6xl">
+        <ResultsView uploadId={uploadId} />
+      </div>
+    </div>
+  );
 }

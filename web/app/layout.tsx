@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
+import { Poppins } from "next/font/google";
+import Navigation from "@/components/ui/navigation";
 import "./globals.css";
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Security Anomaly Explorer",
   description:
-    "Upload web logs in NSS output formatand see a human-readable timeline of events and anomalies.",
+    "Upload web logs in NSS output format and see a human-readable timeline of events and anomalies.",
 };
 
 export default function RootLayout({
@@ -14,23 +22,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <header className="bg-slate-900 text-white shadow">
-          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4">
-            <span className="text-xl" aria-hidden>
-              🛡️
-            </span>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight">
-                Security Anomaly Explorer
-              </h1>
-              <p className="text-xs text-slate-400">
-                Security web-log timeline &amp; anomaly viewer
-              </p>
-            </div>
-          </div>
-        </header>
-        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+      <body className={`${poppins.className} min-h-screen bg-black`}>
+        <Navigation />
+        <main className="pt-16">{children}</main>
       </body>
     </html>
   );

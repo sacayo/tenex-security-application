@@ -1,19 +1,52 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2, UploadCloud } from "lucide-react";
 import { uploadLog } from "@/lib/api";
+import { waitForUpload } from "@/lib/uploadStatus";
+import UploadStatusPanel from "@/components/UploadStatusPanel";
 
 const MAX_BYTES = 25 * 1024 * 1024; // keep in sync with spec.md §5
-const ALLOWED_EXTENSIONS = [".json", ".log", ".txt"];
-const MOCK = process.env.NEXT_PUBLIC_MOCK_API === "1";
+const ALLOWED_EXTENSIONS = [
+  ".json",
+  ".jsonl",
+  ".ndjson",
+  ".log",
+  ".txt",
+  ".csv",
+  ".tsv",
+];
+const SUCCESS_DWELL_MS = 1200;
+
+type Phase = "idle" | "uploading" | "processing" | "success" | "failed" | "error";
+
+interface SuccessInfo {
+  id: number;
+  eventCount: number;
+  anomalyCount: number;
+}
 
 export default function FileUpload() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const navigateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [success, setSuccess] = useState<SuccessInfo | null>(null);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      if (navigateTimer.current) clearTimeout(navigateTimer.current);
+    },
+    [],
+  );
 
   function validate(file: File): string | null {
     const name = file.name.toLowerCase();
@@ -25,21 +58,105 @@ export default function FileUpload() {
     return null;
   }
 
-  async function handleFile(file: File) {
+  const goToResults = useCallback(
+    (id: number) => {
+      if (navigateTimer.current) clearTimeout(navigateTimer.current);
+      router.push(`/uploads/${id}`);
+    },
+    [router],
+  );
+
+  function reset() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (navigateTimer.current) clearTimeout(navigateTimer.current);
+    navigateTimer.current = null;
+    setPhase("idle");
+    setFile(null);
     setError(null);
-    const problem = validate(file);
+    setFailure(null);
+    setSuccess(null);
+  }
+
+  function finishSuccess(id: number, eventCount: number, anomalyCount: number) {
+    setSuccess({ id, eventCount, anomalyCount });
+    setPhase("success");
+    navigateTimer.current = setTimeout(() => goToResults(id), SUCCESS_DWELL_MS);
+  }
+
+  async function handleFile(selected: File) {
+    setError(null);
+    setFailure(null);
+    setSuccess(null);
+
+    const problem = validate(selected);
     if (problem) {
+      setFile(selected);
       setError(problem);
+      setPhase("error");
       return;
     }
-    setUploading(true);
+
+    setFile(selected);
+    setPhase("uploading");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let uploaded;
     try {
-      const result = await uploadLog(file);
-      router.push(`/uploads/${result.id}`);
+      uploaded = await uploadLog(selected);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Upload failed");
-      setUploading(false);
+      setPhase("error");
+      return;
     }
+    if (controller.signal.aborted) return;
+
+    // Synchronous backends answer `completed` immediately — no polling needed.
+    if (uploaded.status === "completed") {
+      finishSuccess(uploaded.id, uploaded.event_count, uploaded.anomaly_count);
+      return;
+    }
+
+    setPhase("processing");
+    try {
+      const status = await waitForUpload(uploaded.id, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      if (status.status === "failed") {
+        setFailure(
+          status.error_message ?? "The backend could not process this file.",
+        );
+        setPhase("failed");
+        return;
+      }
+      finishSuccess(uploaded.id, status.event_count, status.anomaly_count);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setFailure(err instanceof Error ? err.message : "Processing failed");
+      setPhase("failed");
+    }
+  }
+
+  if (phase === "processing" || phase === "success" || phase === "failed") {
+    return (
+      <UploadStatusPanel
+        state={phase}
+        filename={file?.name}
+        fileSize={file?.size}
+        eventCount={success?.eventCount}
+        anomalyCount={success?.anomalyCount}
+        message={failure ?? undefined}
+        onViewResults={
+          success ? () => goToResults(success.id) : undefined
+        }
+        onRetry={file ? () => void handleFile(file) : undefined}
+        onUploadAnother={reset}
+      />
+    );
   }
 
   return (
@@ -58,36 +175,44 @@ export default function FileUpload() {
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file) void handleFile(file);
+          const dropped = e.dataTransfer.files?.[0];
+          if (dropped) void handleFile(dropped);
         }}
-        className={`flex h-56 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white px-6 text-center transition-colors ${
+        className={`flex h-64 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 text-center backdrop-blur-sm transition-colors ${
           dragOver
-            ? "border-indigo-500 bg-indigo-50"
-            : "border-slate-300 hover:border-indigo-400 hover:bg-slate-50"
+            ? "border-white bg-white/10"
+            : "border-gray-700 bg-gray-900/40 hover:border-white/40 hover:bg-gray-900/60"
         }`}
       >
-        {uploading ? (
+        {phase === "uploading" ? (
           <>
-            <div className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-            <p className="font-medium text-slate-700">
-              Uploading &amp; analyzing…
+            <Loader2
+              size={32}
+              className="mb-3 animate-spin text-white/80"
+              aria-hidden
+            />
+            <p className="font-medium text-white">Uploading…</p>
+            <p className="mt-1 text-sm text-white/50">
+              Sending the file to the analyzer
             </p>
-            <p className="mt-1 text-sm text-slate-500">
-              Parsing events and running detection rules
-            </p>
+            {file && (
+              <p className="mt-3 max-w-full truncate text-xs text-white/40">
+                {file.name}
+              </p>
+            )}
           </>
         ) : (
           <>
-            <div className="mb-3 text-4xl" aria-hidden>
-              📄
-            </div>
-            <p className="font-medium text-slate-700">
+            <UploadCloud size={40} className="mb-3 text-white/70" aria-hidden />
+            <p className="font-medium text-white">
               Drag &amp; drop your log file here
             </p>
-            <p className="mt-1 text-sm text-slate-500">
-              or click to browse — .json / .log / .txt, up to 25 MB
+            <p className="mt-1 text-sm text-white/50">
+              or click to browse — .json / .log / .txt / .csv, up to 25 MB
             </p>
+            <span className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-white px-5 text-sm font-medium text-black transition-colors">
+              Browse files
+            </span>
           </>
         )}
       </div>
@@ -98,21 +223,15 @@ export default function FileUpload() {
         accept={ALLOWED_EXTENSIONS.join(",")}
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handleFile(file);
+          const selected = e.target.files?.[0];
+          if (selected) void handleFile(selected);
           e.target.value = "";
         }}
       />
 
       {error && (
-        <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
-        </p>
-      )}
-
-      {MOCK && !uploading && (
-        <p className="mt-3 text-center text-xs text-slate-400">
-          Mock mode is on (NEXT_PUBLIC_MOCK_API=1) — no backend needed.
         </p>
       )}
     </div>

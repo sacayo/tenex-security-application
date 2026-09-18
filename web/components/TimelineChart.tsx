@@ -7,7 +7,7 @@ import type { TimelineBucket } from "@/lib/types";
  */
 export default function TimelineChart({ buckets }: { buckets: TimelineBucket[] }) {
   if (buckets.length === 0) {
-    return <p className="text-sm text-slate-500">No events to chart.</p>;
+    return <p className="text-sm text-white/50">No events to chart.</p>;
   }
 
   const max = Math.max(...buckets.map((b) => b.event_count), 1);
@@ -29,21 +29,21 @@ export default function TimelineChart({ buckets }: { buckets: TimelineBucket[] }
             >
               {b.anomaly_count > 0 && (
                 <span
-                  className="absolute -top-2 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-amber-500"
+                  className="absolute -top-2 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-amber-400"
                   aria-label={`${b.anomaly_count} anomalies`}
                 />
               )}
               <div
-                className="flex w-full flex-col justify-end overflow-hidden rounded-t bg-indigo-200"
+                className="flex w-full flex-col justify-end overflow-hidden rounded-t bg-indigo-500/40"
                 style={{ height: `${Math.max(heightPct, 4)}%` }}
               >
                 <div
-                  className="w-full bg-red-400"
+                  className="w-full bg-red-500/80"
                   style={{ height: `${blockedPct}%` }}
                 />
               </div>
               {i % labelEvery === 0 && (
-                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-slate-500">
+                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-white/40">
                   {formatDateTime(b.bucket_start)}
                 </span>
               )}
@@ -51,15 +51,15 @@ export default function TimelineChart({ buckets }: { buckets: TimelineBucket[] }
           );
         })}
       </div>
-      <div className="mt-8 flex flex-wrap gap-4 text-xs text-slate-500">
+      <div className="mt-8 flex flex-wrap gap-4 text-xs text-white/50">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-indigo-200" /> events
+          <span className="h-2.5 w-2.5 rounded-sm bg-indigo-500/40" /> events
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-red-400" /> blocked
+          <span className="h-2.5 w-2.5 rounded-sm bg-red-500/80" /> blocked
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> anomalies
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> anomalies
         </span>
       </div>
     </div>

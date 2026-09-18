@@ -1,24 +1,36 @@
 import FileUpload from "@/components/FileUpload";
+import Hero from "@/components/ui/hero";
+
+const STEPS = [
+  "The file is parsed into normalized events.",
+  "Rule-based detection flags threats, DLP hits, bursts, and more.",
+  "You get a timeline, summary stats, and a filterable event table.",
+];
 
 export default function UploadPage() {
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-6 text-center">
-        <h2 className="text-2xl font-bold">Upload a web-log file</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Drop a NSS web-log export (JSON) and get a timeline of what
-          happened, with anomalies flagged.
-        </p>
-      </div>
-      <FileUpload />
-      <div className="mt-8 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
-        <h3 className="mb-2 font-semibold text-slate-800">What happens next</h3>
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>The file is parsed into normalized events.</li>
-          <li>Rule-based detection flags threats, DLP hits, bursts, and more.</li>
-          <li>You get a timeline, summary stats, and a filterable event table.</li>
-        </ol>
-      </div>
+    <div className="min-h-screen bg-black text-white">
+      <Hero>
+        <FileUpload />
+      </Hero>
+
+      <section id="how-it-works" className="mx-auto max-w-3xl px-6 pb-24">
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6 backdrop-blur-sm">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white/60">
+            What happens next
+          </h2>
+          <ol className="space-y-3">
+            {STEPS.map((step, i) => (
+              <li key={step} className="flex gap-3 text-sm text-white/70">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-white">
+                  {i + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
     </div>
   );
 }
