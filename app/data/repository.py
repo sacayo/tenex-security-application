@@ -11,6 +11,7 @@ import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.data.tables import Anomaly, Event, Narrative, Upload
@@ -191,23 +192,84 @@ def get_narrative(session: Session, upload_id: int) -> Narrative | None:
 
 
 def mark_narrative_pending(session: Session, upload_id: int) -> Narrative:
-    """Create or reset the row to "pending" before scheduling generation.
+    """Create or reset the row to "pending" (test helper / forced reset).
 
-    Clears the previous content so a refresh never serves stale text with a
-    pending status; the frontend shows a skeleton until the new brief lands.
+    Prefer `claim_narrative_generation` on the request path — it serializes
+    concurrent schedulers. This helper always wins and does not report whether
+    another job was already live.
     """
-    row = get_narrative(session, upload_id)
+    row, _ = claim_narrative_generation(
+        session, upload_id, reclaim_stuck_before=None, force=True
+    )
+    return row
+
+
+def claim_narrative_generation(
+    session: Session,
+    upload_id: int,
+    *,
+    reclaim_stuck_before: datetime | None = None,
+    force: bool = False,
+) -> tuple[Narrative, bool]:
+    """Atomically claim the right to schedule a generation job.
+
+    Uses ``SELECT … FOR UPDATE`` so two concurrent POSTs cannot both enqueue.
+
+    Returns ``(row, acquired)``:
+    - ``acquired=True`` — this caller set the row to pending and **must** enqueue
+    - ``acquired=False`` — a live pending job is already owned by someone else;
+      do **not** enqueue (return 202 with the existing row)
+
+    A pending row is "live" when ``force`` is false and either
+    ``reclaim_stuck_before`` is None or ``updated_at >= reclaim_stuck_before``.
+    Stuck / refresh / cache-invalid paths pass a cutoff (or ``force=True``)
+    so the claim can reclaim.
+    """
+    row = session.scalar(
+        select(Narrative).where(Narrative.upload_id == upload_id).with_for_update()
+    )
     if row is None:
-        row = Narrative(upload_id=upload_id)
-        session.add(row)
+        # Two first-time requests can race on insert; unique(upload_id) +
+        # ON CONFLICT keeps one winner. RETURNING tells us who inserted.
+        inserted = session.execute(
+            pg_insert(Narrative)
+            .values(upload_id=upload_id, status="pending", risk_level="none")
+            .on_conflict_do_nothing(index_elements=["upload_id"])
+            .returning(Narrative.upload_id)
+        ).scalar_one_or_none()
+        session.flush()
+        row = session.scalar(
+            select(Narrative).where(Narrative.upload_id == upload_id).with_for_update()
+        )
+        if row is None:
+            raise RuntimeError(
+                f"failed to create narrative row for upload_id={upload_id}"
+            )
+        if inserted is not None:
+            # We created the row already in pending; we own the schedule.
+            session.commit()
+            logger.debug("narrative upload_id=%s claim acquired (insert)", upload_id)
+            return row, True
+        # Lost the insert race — fall through and treat as live pending unless
+        # force / stuck reclaim applies.
+    if row.status == "pending" and not force:
+        updated = row.updated_at
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=UTC)
+        live = reclaim_stuck_before is None or updated >= reclaim_stuck_before
+        if live:
+            session.commit()
+            logger.debug("narrative upload_id=%s claim lost (live pending)", upload_id)
+            return row, False
+
     row.status = "pending"
     row.content = None
     row.error_message = None
     row.latency_ms = None
     row.updated_at = datetime.now(UTC)
     session.commit()
-    logger.debug("narrative upload_id=%s -> pending", upload_id)
-    return row
+    logger.debug("narrative upload_id=%s claim acquired -> pending", upload_id)
+    return row, True
 
 
 def upsert_narrative(
