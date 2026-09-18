@@ -19,6 +19,7 @@ starts the whole stack, and it needs no GPU and no LLM.
 
 ## Table of contents
 
+- [Demo login](#demo-login)
 - [What it does](#what-it-does)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -33,6 +34,17 @@ starts the whole stack, and it needs no GPU and no LLM.
 - [Security notes](#security-notes)
 - [Why it is built this way](#why-it-is-built-this-way)
 - [Author](#author)
+
+---
+
+## Demo login
+
+The hosted UI is gated by a shared login (UI-only; the API stays open):
+
+| Field | Value |
+|---|---|
+| Username | `admin` |
+| Password | `security` |
 
 ---
 
@@ -257,13 +269,15 @@ Frontend (`web/`, see [`web/.env.example`](web/.env.example)):
 Set these on the Vercel project (Production, and Preview if you want gated
 previews too), then redeploy:
 
-1. `AUTH_USERNAME`, `AUTH_PASSWORD`, `AUTH_SECRET`. These are server-only, not
+1. `AUTH_USERNAME=admin`, `AUTH_PASSWORD=security`, and a random
+   `AUTH_SECRET` (`openssl rand -hex 32`). These are server-only, never
    `NEXT_PUBLIC_`.
 2. Keep `NEXT_PUBLIC_API_URL` pointing at the Railway API, with no trailing
    slash.
 
-After deploy, the `/` page shows a login form until the signed cookie is set.
-Deep links like `/uploads/51` bounce to `/?next=/uploads/51`.
+After deploy, `/` redirects to `/login`, which shows the splash until the
+signed cookie is set. Deep links like `/uploads/51` bounce to
+`/login?next=/uploads/51`.
 
 ### Railway (API, no login env)
 
@@ -403,7 +417,7 @@ security-anomaly-api/
 │   │   └── generate.py         #     background narrative job
 │   └── model/                  #   Pydantic schemas shared by all layers
 ├── web/                        # Next.js + TypeScript + Tailwind frontend
-│   ├── app/                    #   routes: /, /upload, /uploads/[id], /demo
+│   ├── app/                    #   routes: /, /login, /upload, /uploads/[id], /demo
 │   ├── components/             #   Uploader, ResultsView, Timeline, NarrativeCard...
 │   └── lib/api.ts              #   typed API client (mirrors the contract)
 ├── tests/                      # pytest suite + log fixtures
