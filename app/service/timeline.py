@@ -1,12 +1,9 @@
-"""Timeline + summary building.
+"""Timeline and summary building.
 
-Turns stored events and anomalies into the SummaryResponse the frontend
-renders: headline stats, top-N lists, and fixed-width time buckets for the
-timeline chart.
-
-Bucketing (spec.md - "API Contract"): pick the smallest "nice" width
-(1m / 5m / 15m / 1h / 6h / 1d) that keeps the observed range within 60
-buckets. Buckets are aligned to the epoch so their starts are stable.
+Turns events and anomalies into the ``SummaryResponse``: headline stats,
+top-N lists, and epoch-aligned time buckets. Bucketing picks the smallest
+"nice" width (1m/5m/15m/1h/6h/1d) that keeps the range within 60 buckets.
+Contract: ``spec.md`` - "API Contract".
 """
 
 import logging

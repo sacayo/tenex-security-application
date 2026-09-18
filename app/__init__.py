@@ -1,5 +1,5 @@
-"""Security Anomaly API - backend package.
+"""Security Anomaly API backend.
 
-Layer map: main.py (wiring) -> routes.py (HTTP) -> service/ (logic)
--> data/ (persistence), with model/ (Pydantic schemas) shared by all.
+Layers: ``main.py`` (wiring) -> ``routes.py`` (HTTP) -> ``service/`` (logic)
+-> ``data/`` (persistence), with ``model/`` schemas shared by all.
 """

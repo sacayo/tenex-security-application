@@ -1,16 +1,10 @@
-"""Background job: produce and persist the narrative for one upload.
+"""Background job that produces and persists one upload's narrative.
 
-Scheduled by `POST /api/uploads/{id}/narrative` via FastAPI BackgroundTasks
-and executed after the response is sent. Because the request's session is
-closed by then, this job opens its own session from the factory it is
-handed (the route derives the factory from the request session's bind, so
-tests exercising the throwaway database keep working).
-
-Invariants:
-- Never raises. Every failure path ends in a "failed" row with a message
-  the UI can show; the request that scheduled us has already returned 202.
-- Zero-event uploads never reach the model - they get the canned brief.
-- The model only sees the facts block, never raw events.
+Scheduled by ``POST /api/uploads/{id}/narrative`` via FastAPI BackgroundTasks
+and run after the response. Opens its own session, because the request session
+is already closed by then. Invariants: it never raises (every failure writes a
+``failed`` row); zero-event uploads get a canned brief without a model call;
+the model sees only the facts block, never raw events.
 """
 
 from __future__ import annotations
@@ -63,6 +57,7 @@ def generate_narrative(
     client: NarrativeClient,
     session_factory: SessionFactory,
 ) -> None:
+    """Generate, validate, and persist the narrative for one upload."""
     session = session_factory()
     try:
         summary = load_summary(session, upload_id)

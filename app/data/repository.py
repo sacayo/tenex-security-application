@@ -1,10 +1,9 @@
-"""Repository: every database read/write the rest of the app needs.
+"""Repository: every database read and write in the application.
 
-Routes call these functions; they never write SQL themselves. Keeping all
-queries here means there is exactly one place to audit for injection risks.
-
-Each function commits its own work so a failed parse still leaves an
-auditable `failed` upload row (spec.md - "Data Model").
+Routes call these functions and never build SQL themselves, so there is a
+single place to audit. Each function commits its own work, which lets a failed
+parse still leave an auditable ``failed`` upload row. Schema: ``spec.md`` -
+"Data Model".
 """
 
 import logging
@@ -122,6 +121,7 @@ def insert_anomalies(
 
 
 def get_upload(session: Session, upload_id: int) -> Upload | None:
+    """Return an upload by id, or None if it does not exist."""
     return session.get(Upload, upload_id)
 
 
@@ -167,6 +167,7 @@ def list_events(
 
 
 def get_events_for_summary(session: Session, upload_id: int) -> list[Event]:
+    """Return all events for an upload, ordered by timestamp and id."""
     statement = (
         select(Event)
         .where(Event.upload_id == upload_id)
@@ -176,6 +177,7 @@ def get_events_for_summary(session: Session, upload_id: int) -> list[Event]:
 
 
 def get_anomalies(session: Session, upload_id: int) -> list[Anomaly]:
+    """Return all anomalies for an upload, ordered by id."""
     statement = (
         select(Anomaly).where(Anomaly.upload_id == upload_id).order_by(Anomaly.id)
     )
@@ -188,6 +190,7 @@ def get_anomalies(session: Session, upload_id: int) -> list[Anomaly]:
 
 
 def get_narrative(session: Session, upload_id: int) -> Narrative | None:
+    """Return the cached narrative row for an upload, or None."""
     return session.scalar(select(Narrative).where(Narrative.upload_id == upload_id))
 
 
@@ -213,17 +216,10 @@ def claim_narrative_generation(
 ) -> tuple[Narrative, bool]:
     """Atomically claim the right to schedule a generation job.
 
-    Uses ``SELECT … FOR UPDATE`` so two concurrent POSTs cannot both enqueue.
-
-    Returns ``(row, acquired)``:
-    - ``acquired=True`` — this caller set the row to pending and **must** enqueue
-    - ``acquired=False`` — a live pending job is already owned by someone else;
-      do **not** enqueue (return 202 with the existing row)
-
-    A pending row is "live" when ``force`` is false and either
-    ``reclaim_stuck_before`` is None or ``updated_at >= reclaim_stuck_before``.
-    Stuck / refresh / cache-invalid paths pass a cutoff (or ``force=True``)
-    so the claim can reclaim.
+    Uses ``SELECT ... FOR UPDATE`` so concurrent POSTs cannot both enqueue.
+    Returns ``(row, acquired)``; when ``acquired`` is false a live job already
+    owns the row and the caller must not enqueue. Pass ``force`` or a
+    ``reclaim_stuck_before`` cutoff to reclaim a stuck or stale row.
     """
     row = session.scalar(
         select(Narrative).where(Narrative.upload_id == upload_id).with_for_update()

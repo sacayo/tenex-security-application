@@ -1,10 +1,7 @@
-"""Upload metadata shapes.
+"""Upload metadata and status shapes.
 
-An "upload" is one user-submitted log file plus its processing state.
-The state machine is defined in spec.md - "Data Model":
-
-    uploaded -> parsing -> completed
-                parsing -> failed   (error_message set)
+An upload is one submitted log file plus its processing state; the state
+machine is in ``spec.md`` - "Data Model".
 """
 
 from datetime import datetime
@@ -13,6 +10,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class UploadResponse(BaseModel):
+    """Result of a successful upload."""
+
     id: int
     filename: str
     status: str
@@ -21,6 +20,8 @@ class UploadResponse(BaseModel):
 
 
 class UploadStatus(BaseModel):
+    """Current processing state of one upload."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int

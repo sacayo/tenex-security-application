@@ -1,9 +1,8 @@
-"""Canonical event schema: the normalized shape every parsed log line becomes.
+"""Canonical event schema.
 
-`app.service.parsing` converts each raw Zscaler NSS web-log record into one
-`CanonicalEvent`. Detection rules and the timeline only ever see this shape,
-never raw NSS fields. The full NSS field -> canonical field mapping table
-lives in spec.md - "Log Format & Canonical Schema".
+``app.service.parsing`` maps each raw NSS web-log record to one
+``CanonicalEvent``; detection and the timeline only ever see this shape. The
+NSS field mapping is in ``spec.md`` - "Log Format & Canonical Schema".
 """
 
 from datetime import datetime
@@ -13,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventBase(BaseModel):
+    """Canonical fields shared by the parsed and API event shapes."""
+
     model_config = ConfigDict(from_attributes=True)
 
     timestamp: datetime
@@ -33,14 +34,20 @@ class EventBase(BaseModel):
 
 
 class CanonicalEvent(EventBase):
+    """A parsed event plus its untouched raw NSS record."""
+
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class EventOut(EventBase):
+    """A persisted event as returned by the API."""
+
     id: int
 
 
 class EventPage(BaseModel):
+    """One page of events plus paging metadata."""
+
     items: list[EventOut]
     total: int
     limit: int

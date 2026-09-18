@@ -1,12 +1,9 @@
-"""Narrative shapes: the LLM-written brief for one upload.
+"""Shapes for the model-written brief.
 
-POST/GET /api/uploads/{id}/narrative return one `NarrativeResponse`. The
-frontend (`web/components/NarrativeCard.tsx`) renders these shapes 1:1 -
-if you change them, update spec.md and `web/lib/types.ts` together.
-
-`NarrativeSections` doubles as the JSON schema the model is constrained to
-(see `app.service.narrative.JSON_SCHEMA`), so field names here ARE the
-prompt contract.
+The narrative endpoints return one ``NarrativeResponse``; the frontend renders
+it 1:1, so update ``spec.md`` and ``web/lib/types.ts`` together. Field names on
+``NarrativeSections`` are the model's JSON-schema contract
+(``app.service.narrative.JSON_SCHEMA``).
 """
 
 from datetime import datetime
@@ -28,6 +25,8 @@ class NarrativeSections(BaseModel):
 
 
 class NarrativeResponse(BaseModel):
+    """One upload's narrative state and, when ready, its sections."""
+
     upload_id: int
     status: NarrativeStatus
     # Computed in Python from anomaly severities - never by the model.
