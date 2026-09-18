@@ -9,7 +9,9 @@ from tests.test_parsing import FIXTURE
 FIXTURE_BYTES = FIXTURE.read_bytes()
 
 
-def _upload(client, content: bytes = FIXTURE_BYTES, filename: str = "sample_nss_web.json"):
+def _upload(
+    client, content: bytes = FIXTURE_BYTES, filename: str = "sample_nss_web.json"
+):
     return client.post(
         "/api/logs",
         files={"file": (filename, content, "application/json")},
@@ -81,9 +83,7 @@ def test_list_events_page(client) -> None:
 
 def test_list_events_limit_is_capped(client) -> None:
     upload_id = _upload(client).json()["id"]
-    body = client.get(
-        f"/api/uploads/{upload_id}/events", params={"limit": 1000}
-    ).json()
+    body = client.get(f"/api/uploads/{upload_id}/events", params={"limit": 1000}).json()
     assert body["limit"] == 200
 
 

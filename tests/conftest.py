@@ -21,7 +21,7 @@ TEST_DATABASE_URL = os.environ.get(
     "postgresql+psycopg://anomaly:anomaly@localhost:5432/anomaly_test",
 )
 
-_TABLES = ("uploads", "events", "anomalies")
+_TABLES = ("uploads", "events", "anomalies", "narratives")
 
 
 @pytest.fixture(scope="session")

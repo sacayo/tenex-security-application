@@ -1,10 +1,11 @@
 """SQLAlchemy ORM models: the database schema.
 
-Three tables (columns + rationale in spec.md - "Data Model"):
+Four tables (columns + rationale in spec.md - "Data Model"):
 
-    uploads    - one row per uploaded file (metadata + processing status)
-    events     - one row per normalized log line (FK -> uploads)
-    anomalies  - one row per detected anomaly (FK -> uploads, optional FK -> events)
+    uploads     - one row per uploaded file (metadata + processing status)
+    events      - one row per normalized log line (FK -> uploads)
+    anomalies   - one row per detected anomaly (FK -> uploads, optional FK -> events)
+    narratives  - at most one cached LLM brief per upload (FK -> uploads, unique)
 """
 
 from datetime import UTC, datetime
@@ -49,6 +50,12 @@ class Upload(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    narrative: Mapped["Narrative | None"] = relationship(
+        back_populates="upload",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
 
 
 class Event(Base):
@@ -56,9 +63,7 @@ class Event(Base):
     __table_args__ = (Index("ix_events_upload_id_timestamp", "upload_id", "timestamp"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    upload_id: Mapped[int] = mapped_column(
-        ForeignKey("uploads.id", ondelete="CASCADE")
-    )
+    upload_id: Mapped[int] = mapped_column(ForeignKey("uploads.id", ondelete="CASCADE"))
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     client_ip: Mapped[str] = mapped_column(String(45))
     username: Mapped[str | None] = mapped_column(String(255), default=None)
@@ -85,9 +90,7 @@ class Anomaly(Base):
     __table_args__ = (Index("ix_anomalies_upload_id", "upload_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    upload_id: Mapped[int] = mapped_column(
-        ForeignKey("uploads.id", ondelete="CASCADE")
-    )
+    upload_id: Mapped[int] = mapped_column(ForeignKey("uploads.id", ondelete="CASCADE"))
     event_id: Mapped[int | None] = mapped_column(
         ForeignKey("events.id", ondelete="SET NULL"), default=None
     )
@@ -101,3 +104,34 @@ class Anomaly(Base):
 
     upload: Mapped["Upload"] = relationship(back_populates="anomalies")
     event: Mapped["Event | None"] = relationship(back_populates="anomalies")
+
+
+class Narrative(Base):
+    """Cached LLM brief. One row per upload; regenerations overwrite it.
+
+    `status` is "pending" while a background task is running, then "ready"
+    or "failed". `(model, prompt_version)` records what produced `content`
+    so a prompt change can invalidate the cache without a migration.
+    """
+
+    __tablename__ = "narratives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    upload_id: Mapped[int] = mapped_column(
+        ForeignKey("uploads.id", ondelete="CASCADE"), unique=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    model: Mapped[str | None] = mapped_column(String(255), default=None)
+    prompt_version: Mapped[str | None] = mapped_column(String(64), default=None)
+    risk_level: Mapped[str] = mapped_column(String(16), default="none")
+    content: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    error_message: Mapped[str | None] = mapped_column(Text, default=None)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    upload: Mapped["Upload"] = relationship(back_populates="narrative")

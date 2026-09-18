@@ -64,7 +64,9 @@ def test_single_blocked_shopping_event_fires_no_rules() -> None:
 
 
 def test_threat_detected_metadata() -> None:
-    hits = rule_threat_detected([_event(threat_name="Trojan.Win32.FakeAV", risk_score=92)])
+    hits = rule_threat_detected(
+        [_event(threat_name="Trojan.Win32.FakeAV", risk_score=92)]
+    )
     assert len(hits) == 1
     assert hits[0].severity == "high"
     assert "Trojan.Win32.FakeAV" in hits[0].title

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.data.tables import Anomaly, Event, Upload
+from app.data.tables import Anomaly, Event, Narrative, Upload
 from app.model.event import CanonicalEvent
 from app.model.summary import DetectedAnomaly
 
@@ -103,9 +103,7 @@ def insert_anomalies(
     rows: list[Anomaly] = []
     for anomaly in anomalies:
         event_id = (
-            event_ids[anomaly.event_index]
-            if anomaly.event_index is not None
-            else None
+            event_ids[anomaly.event_index] if anomaly.event_index is not None else None
         )
         rows.append(
             Anomaly(
@@ -148,9 +146,7 @@ def list_events(
         )
         filters.append(Event.id.in_(flagged_event_ids))
 
-    total = (
-        session.scalar(select(func.count()).select_from(Event).where(*filters)) or 0
-    )
+    total = session.scalar(select(func.count()).select_from(Event).where(*filters)) or 0
     statement = (
         select(Event)
         .where(*filters)
@@ -183,3 +179,70 @@ def get_anomalies(session: Session, upload_id: int) -> list[Anomaly]:
         select(Anomaly).where(Anomaly.upload_id == upload_id).order_by(Anomaly.id)
     )
     return list(session.scalars(statement).all())
+
+
+# --------------------------------------------------------------------------
+# Narratives (LLM brief cache)
+# --------------------------------------------------------------------------
+
+
+def get_narrative(session: Session, upload_id: int) -> Narrative | None:
+    return session.scalar(select(Narrative).where(Narrative.upload_id == upload_id))
+
+
+def mark_narrative_pending(session: Session, upload_id: int) -> Narrative:
+    """Create or reset the row to "pending" before scheduling generation.
+
+    Clears the previous content so a refresh never serves stale text with a
+    pending status; the frontend shows a skeleton until the new brief lands.
+    """
+    row = get_narrative(session, upload_id)
+    if row is None:
+        row = Narrative(upload_id=upload_id)
+        session.add(row)
+    row.status = "pending"
+    row.content = None
+    row.error_message = None
+    row.latency_ms = None
+    row.updated_at = datetime.now(UTC)
+    session.commit()
+    logger.debug("narrative upload_id=%s -> pending", upload_id)
+    return row
+
+
+def upsert_narrative(
+    session: Session,
+    upload_id: int,
+    *,
+    status: str,
+    risk_level: str,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    content: dict | None = None,
+    error_message: str | None = None,
+    latency_ms: int | None = None,
+) -> Narrative:
+    """Write the terminal state of a generation run ("ready" or "failed")."""
+    row = get_narrative(session, upload_id)
+    if row is None:
+        row = Narrative(upload_id=upload_id)
+        session.add(row)
+    row.status = status
+    row.risk_level = risk_level
+    row.model = model
+    row.prompt_version = prompt_version
+    row.content = content
+    row.error_message = error_message
+    row.latency_ms = latency_ms
+    row.updated_at = datetime.now(UTC)
+    session.commit()
+    if status == "ready":
+        logger.info(
+            "narrative upload_id=%s ready model=%s latency=%sms",
+            upload_id,
+            model,
+            latency_ms,
+        )
+    else:
+        logger.warning("narrative upload_id=%s failed: %s", upload_id, error_message)
+    return row
