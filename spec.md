@@ -20,7 +20,9 @@ This document is the **source of truth** for the system design and the
 - Responsive, polished UI.
 
 **Non-goals (explicitly out of scope)**
-- Authentication / multi-user support. Single-user local prototype.
+- API authentication / multi-user support. Single-user prototype. The Next.js
+  UI may optionally show a shared login splash (`AUTH_*` env); the FastAPI
+  API stays unauthenticated.
 - Other log formats (firewall/DNS NSS feeds, syslog, etc.).
 - ML-based detection, real-time streaming, background job queues.
 - Retention policies, multi-tenancy, RBAC, audit trails.
@@ -690,6 +692,11 @@ stub docstring links back to the relevant section of this spec.
   (`app/data/repository.py` is the only query site). No string-built SQL.
 - **CORS**: env-driven (`CORS_ORIGINS` list + optional `CORS_ORIGIN_REGEX`
   for Vercel preview URLs); defaults to `http://localhost:3000` and `:8000`.
+- **UI login gate** (optional, Vercel only): when `AUTH_USERNAME`,
+  `AUTH_PASSWORD`, and `AUTH_SECRET` are all set, Next.js middleware requires
+  a signed httpOnly cookie before `/upload` and `/uploads/*`. There is no
+  users table; the password lives in env. This does **not** protect the
+  Railway API — anyone with the API URL can still call it.
 - **Secrets**: DB credentials and the Modal proxy token (`LLM_API_KEY`) come
   from env vars; compose defaults are local-only dev values — no real
   secrets in the repo. The model credential lives only on the API host and

@@ -50,5 +50,6 @@ Run from repo root unless noted:
   not import sqlalchemy until then.
 - Keep `app/service/` pure Python (no FastAPI/sqlalchemy imports) — that
   layering is the point of the exercise.
-- No auth anywhere by design (local single-user prototype); don't add it
-  without being asked.
+- No API auth by design (local single-user prototype). The Next.js UI can
+  optionally gate itself with `AUTH_USERNAME` / `AUTH_PASSWORD` / `AUTH_SECRET`;
+  that cookie does not protect the Railway API. Don't add API auth unless asked.
