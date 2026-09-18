@@ -98,80 +98,6 @@ network library. That keeps the interesting logic (parsing, detection, timeline,
 prompt building) easy to unit test. `app/data/` and `app/llm/` are the only
 impure edges.
 
-### Upload request lifecycle
-
-```mermaid
-sequenceDiagram
-    actor U as User
-    participant W as Next.js (web/)
-    participant R as app/routes.py
-    participant P as service/parsing.py
-    participant D as service/detection.py
-    participant DB as PostgreSQL
-    participant T as service/timeline.py
-
-    U->>W: choose .json/.log/.csv file, click Upload
-    W->>R: POST /api/logs (multipart/form-data)
-    R->>R: validate extension + size (<= 25 MB)
-    R->>P: parse_nss_feed(bytes)
-    P-->>R: list[CanonicalEvent]
-    R->>D: run_rules(events)
-    D-->>R: list[DetectedAnomaly]
-    R->>DB: INSERT upload + events + anomalies
-    R-->>W: 201 UploadResponse {id, status, counts}
-    opt status is uploaded / parsing
-        loop poll until completed | failed
-            W->>R: GET /api/uploads/{id}
-            R-->>W: UploadStatus
-        end
-    end
-    W->>R: GET /api/uploads/{id}/summary
-    R->>DB: SELECT events, anomalies
-    R->>T: build_summary(events, anomalies)
-    T-->>R: SummaryResponse
-    R-->>W: 200 summary JSON
-    W-->>U: timeline + stat cards + anomaly list
-```
-
-Processing is synchronous on the happy path. Files are at most 25 MB, so parsing
-and detection finish well under a second. `POST /api/logs` returns
-`status: "completed"` with the final counts. The frontend also handles an async
-path. It polls until the status is `completed` or `failed`, so a page reload
-mid-processing resumes cleanly.
-
-### Narrative request lifecycle (optional)
-
-```mermaid
-sequenceDiagram
-    participant C as NarrativeCard
-    participant R as routes.py
-    participant Repo as repository.py
-    participant BG as generate.py (background)
-    participant M as vLLM on Modal
-
-    C->>R: POST /api/uploads/{id}/narrative
-    R->>Repo: claim_narrative_generation (SELECT ... FOR UPDATE)
-    alt claim acquired
-        Repo-->>R: row, true
-        R-->>C: 202 pending
-        R->>BG: BackgroundTasks.generate_narrative
-        BG->>BG: build_summary -> build_facts (sanitized)
-        BG->>M: chat/completions (Bearer, JSON schema)
-        M-->>BG: schema-constrained JSON
-        BG->>BG: validate_sections (shape + grounding)
-        BG->>Repo: upsert_narrative (ready | failed)
-    else a live job already owns it
-        Repo-->>R: row, false
-        R-->>C: 202 pending (no second job)
-    end
-    loop every 2s until terminal
-        C->>R: GET /api/uploads/{id}/narrative
-        R-->>C: pending | ready | failed
-    end
-```
-
----
-
 ## Tech stack
 
 | Area | Choice | Why |
@@ -183,7 +109,7 @@ sequenceDiagram
 | Frontend | **Next.js 15 (App Router)** + **React 19** + **TypeScript** | Server components, a typed API client, and file-based routing. |
 | Styling | **Tailwind CSS** | A consistent dark dashboard UI, built quickly. |
 | Charts | **Recharts** | A composable bar chart for the timeline. |
-| LLM (optional) | **vLLM + Nemotron 3.5 Lightning on Modal** | A 30B/3B-active MoE. It scales to zero and speaks the OpenAI API. |
+| LLM (optional) | **vLLM + Nemotron 3.5 Lightning on Modal** | A 30B/3B-active MoE. It scales to zero and uses Open AI chat completion. |
 | Tooling | **uv**, **ruff**, **pytest** | A fast, reproducible Python workflow. |
 
 ---
