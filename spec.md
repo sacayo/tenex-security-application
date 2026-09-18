@@ -505,3 +505,13 @@ stub docstring links back to the relevant section of this spec.
 - **Error handling**: parse failures return 422 with a useful message and
   mark the upload `failed`; unexpected exceptions → 500, logged server-side,
   never leaking internals to the client.
+- **Logging**: stdlib `logging`, configured once in
+  `app/log_config.py` via `dictConfig` from the FastAPI lifespan (uvicorn
+  replaces logging config otherwise). Level from `LOG_LEVEL` (default
+  `INFO`). Every request gets a `request_id` (uuid) carried in a ContextVar,
+  injected into every record by `RequestIdFilter`, and returned in the
+  `X-Request-ID` response header — one id greps a whole upload's lifecycle.
+  The service layer logs counts/decisions only; raw event contents
+  (usernames, URLs, user agents) and the `DATABASE_URL` (password) are never
+  logged at INFO. Unknown-upload / parse-failure logs are `WARNING`; failed
+  requests are `ERROR` via `logger.exception`.

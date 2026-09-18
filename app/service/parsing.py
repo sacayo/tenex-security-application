@@ -8,11 +8,14 @@ documented in spec.md - "Log Format & Canonical Schema".
 """
 
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import unquote
 
 from app.model.event import CanonicalEvent
+
+logger = logging.getLogger(__name__)
 
 _SENTINEL = "None"
 _TIME_FORMAT = "%a %b %d %Y %H:%M:%S"
@@ -50,11 +53,12 @@ def _parse_time(value: Any) -> datetime:
         raise ValueError(f"unparseable timestamp: {value!r}") from exc
 
 
-def _iter_records(text: str) -> list[Any]:
+def _iter_records(text: str) -> tuple[list[Any], int]:
     try:
         loaded = json.loads(text)
     except json.JSONDecodeError:
         records: list[Any] = []
+        malformed = 0
         for line in text.splitlines():
             stripped = line.strip()
             if not stripped:
@@ -62,13 +66,13 @@ def _iter_records(text: str) -> list[Any]:
             try:
                 records.append(json.loads(stripped))
             except json.JSONDecodeError:
-                continue
-        return records
+                malformed += 1
+        return records, malformed
     if isinstance(loaded, dict):
-        return [loaded]
+        return [loaded], 0
     if isinstance(loaded, list):
-        return loaded
-    return []
+        return loaded, 0
+    return [], 1
 
 
 def _to_event(record: dict[str, Any]) -> CanonicalEvent:
@@ -98,17 +102,27 @@ def parse_nss_feed(raw: bytes) -> list[CanonicalEvent]:
     """Parse a whole uploaded file into normalized canonical events."""
     text = raw.decode("utf-8", errors="replace")
     if not text.strip():
+        logger.warning("empty upload: no bytes to parse")
         raise ValueError("Empty file: no log records found.")
 
+    records, skipped = _iter_records(text)
     events: list[CanonicalEvent] = []
-    for record in _iter_records(text):
+    for record in records:
         if not isinstance(record, dict):
+            skipped += 1
             continue
         try:
             events.append(_to_event(record))
-        except (KeyError, TypeError, ValueError):
-            continue
+        except (KeyError, TypeError, ValueError) as exc:
+            skipped += 1
+            logger.debug("skipping malformed record: %s", exc)
+
+    if skipped:
+        logger.warning("skipped %d malformed record(s)", skipped)
 
     if not events:
+        logger.warning("no valid records found in upload")
         raise ValueError("Unrecognized content: not valid NSS web-log JSON.")
+
+    logger.info("parsed %d event(s), skipped %d", len(events), skipped)
     return events
