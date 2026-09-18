@@ -14,6 +14,7 @@ import pytest
 from app.service.parsing import parse_nss_feed
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_nss_web.json"
+CSV_FIXTURE = Path(__file__).parent / "fixtures" / "sample_nss_csv.txt"
 
 
 def _fixture_records() -> list[dict]:
@@ -100,3 +101,8 @@ def test_unrecognizable_content_raises() -> None:
 def test_empty_file_raises() -> None:
     with pytest.raises(ValueError):
         parse_nss_feed(b"")
+
+
+def test_csv_nss_output_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        parse_nss_feed(CSV_FIXTURE.read_bytes())

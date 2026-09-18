@@ -1,0 +1,1 @@
+"Mon Jun 20 15:29:11 2022","new-gre","HTTP","ebay.com/","Blocked","Ebay","Consumer Apps","72","14061","0","0","Productivity Loss","Shopping and Auctions","Online Shopping","None","None","0","None","None","new-gre","Default Department","172.17.3.49","66.211.175.229","GET","403","curl/7.68.0","None","FwFilter","Firewall_1","Other","None","NA","NA","N/A"
