@@ -98,11 +98,28 @@ def test_build_facts_states_no_anomalies_plainly() -> None:
     assert "Anomalies: none detected by any rule." in build_facts(_summary())
 
 
-def test_build_facts_never_includes_raw_urls() -> None:
-    # Descriptions come from rules, which never include full URLs; make sure
-    # we do not add any other source of them.
-    facts = build_facts(_summary([_anomaly(1, "medium")]))
-    assert "http://" not in facts and "https://" not in facts
+def test_build_facts_never_includes_raw_urls_or_usernames() -> None:
+    """Descriptions can carry URLs (via host-or-url) and login tokens; facts must not."""
+    facts = build_facts(
+        _summary(
+            [
+                _anomaly(
+                    1,
+                    "high",
+                    description=(
+                        "carol.davis (10.1.4.22) reached "
+                        "https://evil.example/path?q=1 — detected as malware."
+                    ),
+                )
+            ]
+        )
+    )
+    assert "https://" not in facts
+    assert "http://" not in facts
+    assert "evil.example/path" not in facts
+    assert "carol.davis" not in facts
+    assert "10.1.4.22" in facts
+    assert "user (10.1.4.22)" in facts
 
 
 # --- strip_thinking ---------------------------------------------------------

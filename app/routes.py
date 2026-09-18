@@ -9,7 +9,7 @@ it, so do not deviate without updating spec.md and `web/lib/api.ts`.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -264,13 +264,19 @@ def request_narrative(
                 detail="A summary was generated recently. Try again in a few minutes.",
             )
 
-    row = repository.mark_narrative_pending(session, upload_id)
-    # The request session closes before the task runs; hand it a factory
-    # bound to the same engine (keeps the test-DB override working).
-    background_tasks.add_task(
-        generate_narrative, upload_id, client, factory_for(session)
+    row, acquired = repository.claim_narrative_generation(
+        session,
+        upload_id,
+        reclaim_stuck_before=now
+        - timedelta(seconds=settings.llm_timeout_seconds + STUCK_GRACE_SECONDS),
     )
-    logger.info("narrative upload_id=%s scheduled refresh=%s", upload_id, refresh)
+    if acquired:
+        # The request session closes before the task runs; hand it a factory
+        # bound to the same engine (keeps the test-DB override working).
+        background_tasks.add_task(
+            generate_narrative, upload_id, client, factory_for(session)
+        )
+        logger.info("narrative upload_id=%s scheduled refresh=%s", upload_id, refresh)
     response.status_code = 202
     return _narrative_response(row)
 

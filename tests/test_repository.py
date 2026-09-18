@@ -4,7 +4,7 @@ Covers status transitions, insert/read-back, the critical `event_index` ->
 `events.id` mapping, filters/pagination, ordering, and FK cascade.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -176,3 +176,49 @@ def test_deleting_upload_cascades_to_children(session) -> None:
 
     assert session.scalar(select(func.count()).select_from(Event)) == 0
     assert session.scalar(select(func.count()).select_from(Anomaly)) == 0
+
+
+# --- narrative claim (FOR UPDATE) -------------------------------------------
+
+
+def test_claim_second_loses_to_live_pending(session) -> None:
+    """Two sequential claims: only the first acquires; the second must not
+    flip an already-live pending row (the enqueue race Copilot flagged)."""
+    upload = repository.create_upload(session, filename="nss.json", file_size=1)
+    repository.mark_upload_completed(session, upload.id, 0, 0)
+    cutoff = datetime.now(UTC) - timedelta(seconds=300)
+
+    row1, acquired1 = repository.claim_narrative_generation(
+        session, upload.id, reclaim_stuck_before=cutoff
+    )
+    assert acquired1 is True
+    assert row1.status == "pending"
+    first_updated = row1.updated_at
+
+    row2, acquired2 = repository.claim_narrative_generation(
+        session, upload.id, reclaim_stuck_before=cutoff
+    )
+    assert acquired2 is False
+    assert row2.status == "pending"
+    assert row2.updated_at == first_updated
+
+
+def test_claim_reclaims_stuck_pending(session) -> None:
+    upload = repository.create_upload(session, filename="nss.json", file_size=1)
+    repository.mark_upload_completed(session, upload.id, 0, 0)
+    cutoff = datetime.now(UTC) - timedelta(seconds=300)
+
+    row, acquired = repository.claim_narrative_generation(
+        session, upload.id, reclaim_stuck_before=cutoff
+    )
+    assert acquired is True
+    stuck_at = datetime.now(UTC) - timedelta(seconds=10_000)
+    row.updated_at = stuck_at
+    session.commit()
+
+    row2, acquired2 = repository.claim_narrative_generation(
+        session, upload.id, reclaim_stuck_before=cutoff
+    )
+    assert acquired2 is True
+    assert row2.status == "pending"
+    assert row2.updated_at > stuck_at
