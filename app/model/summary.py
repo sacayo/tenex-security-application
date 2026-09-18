@@ -1,8 +1,7 @@
-"""Summary shapes: what the frontend needs to render the results page.
+"""Shapes for the results-page summary.
 
-GET /api/uploads/{id}/summary returns one `SummaryResponse`. The frontend
-(`web/` results page) renders these shapes 1:1 - if you change them, update
-spec.md and `web/lib/types.ts` together.
+``GET /api/uploads/{id}/summary`` returns one ``SummaryResponse``; the frontend
+renders it 1:1, so update ``spec.md`` and ``web/lib/types.ts`` together.
 """
 
 from datetime import datetime
@@ -14,6 +13,8 @@ Severity = Literal["low", "medium", "high"]
 
 
 class DetectedAnomaly(BaseModel):
+    """An anomaly from detection, keyed by the event's list index."""
+
     rule: str
     severity: Severity
     title: str
@@ -22,6 +23,8 @@ class DetectedAnomaly(BaseModel):
 
 
 class TimelineBucket(BaseModel):
+    """Counts for one time bucket of the timeline."""
+
     bucket_start: datetime
     event_count: int
     blocked_count: int
@@ -29,6 +32,8 @@ class TimelineBucket(BaseModel):
 
 
 class AnomalyOut(BaseModel):
+    """A persisted anomaly as returned by the API."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -41,16 +46,22 @@ class AnomalyOut(BaseModel):
 
 
 class CategoryCount(BaseModel):
+    """A URL category and its event count."""
+
     category: str
     count: int
 
 
 class HostCount(BaseModel):
+    """A destination host and its event count."""
+
     host: str
     count: int
 
 
 class SummaryResponse(BaseModel):
+    """Everything the results page needs in one payload."""
+
     upload_id: int
     time_range_start: datetime
     time_range_end: datetime

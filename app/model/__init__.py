@@ -1,9 +1,9 @@
-"""Pydantic model definitions shared across all layers.
+"""Pydantic schemas shared by every layer.
 
-`event`   - the canonical normalized event + its API representation.
-`upload`  - upload metadata/status shapes.
-`summary` - timeline buckets, anomalies, and the summary response.
+``event``     - canonical event and its API representation.
+``upload``    - upload metadata and status shapes.
+``summary``   - timeline buckets, anomalies, and the summary response.
+``narrative`` - the model-written brief.
 
-Everything here is plain data + validation. No logic beyond simple
-validators belongs in this package.
+Plain data and validation only; no business logic.
 """

@@ -1,9 +1,8 @@
-"""Engine + session factory.
+"""Database engine, session factory, and FastAPI session dependency.
 
-The only place that knows how to connect to the database. The connection
-string comes from `DATABASE_URL` so the same code runs on a laptop (localhost),
-inside Docker Compose (hostname `db`), and on a PaaS whose injected URL may
-omit the driver. Layering rules: spec.md - "Architecture Overview".
+The only module that reads ``DATABASE_URL``. ``normalize_database_url`` forces
+the psycopg 3 driver so a platform-injected URL works unchanged. Layering
+rules: ``spec.md`` - "Architecture Overview".
 """
 
 import logging
@@ -70,12 +69,11 @@ def get_session() -> Iterator[Session]:
 
 
 def factory_for(session: Session) -> sessionmaker[Session]:
-    """A session factory bound to the same engine as `session`.
+    """Return a session factory bound to the same engine as ``session``.
 
-    Background tasks outlive the request session that scheduled them and
-    must open their own. Deriving the factory from the live session (rather
-    than using the module-level `SessionLocal`) keeps the test suite's
-    `get_session` override pointing at the throwaway database.
+    Background tasks outlive the request session, so they need their own.
+    Deriving it from the live session (not ``SessionLocal``) keeps the test
+    suite's ``get_session`` override pointed at the throwaway database.
     """
     return sessionmaker(
         bind=session.get_bind(), autoflush=False, expire_on_commit=False

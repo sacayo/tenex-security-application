@@ -1,16 +1,11 @@
-"""Narrative building blocks: everything about the LLM brief that is *pure*.
+"""Pure building blocks for the model-written brief.
 
-This module never does I/O. It turns a `SummaryResponse` into the compact
-facts block the model is shown, owns the prompt text, computes the risk
-level deterministically, and validates what comes back - including a
-grounding check that rejects any IP or hostname the model was not told
-about. The HTTP call itself lives in `app.llm.client`; orchestration in
-`app.llm.generate`.
-
-Why a facts block and not the raw logs: the model only ever sees numbers
-and rule output that the deterministic layer already produced. That caps
-tokens, keeps raw URLs/user agents off the wire, and makes grounding
-checkable - if a host is not in `facts`, the model made it up.
+Builds the compact facts block the model is shown, owns the prompt and JSON
+schema, computes the risk level, and validates the response - including a
+grounding check that rejects any IP or hostname absent from the facts. Performs
+no I/O; the HTTP call is in ``app.llm.client`` and orchestration in
+``app.llm.generate``. The facts block keeps raw URLs and user agents off the
+wire and makes grounding verifiable.
 """
 
 from __future__ import annotations

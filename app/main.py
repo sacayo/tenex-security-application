@@ -1,16 +1,8 @@
-"""Application entry point for the Security Anomaly API.
+"""Application entry point and FastAPI wiring.
 
-This module only *wires things together*: it creates the FastAPI app,
-exposes the liveness probe, and mounts the HTTP routers from
-`app.routes`. It should contain no business logic.
-
-Layer map (see spec.md - "Architecture Overview"):
-    app/main.py     -> you are here: app factory + wiring
-    app/routes.py   -> HTTP layer (request/response handling)
-    app/service/    -> business logic (parsing, detection, timeline)
-    app/data/       -> persistence (engine, ORM tables, repository)
-    app/model/      -> Pydantic schemas shared across all layers
-
+Creates the app, configures CORS and logging, exposes the liveness probe, and
+mounts ``app.routes``. Contains no business logic. Layering rules:
+``spec.md`` - "Architecture Overview".
 """
 
 import logging
@@ -66,6 +58,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Attach a request id, log the response, and set ``X-Request-ID``."""
     request_id = set_request_id()
     start = time.perf_counter()
     try:

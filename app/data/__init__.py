@@ -1,8 +1,8 @@
-"""Database storage/interface layer.
+"""Database layer.
 
-`session`    - engine + session factory (the only place that knows DATABASE_URL).
-`tables`     - SQLAlchemy ORM models (the database schema).
-`repository` - all persist/query functions; routes call these, never raw SQL.
+``session``    - engine and session factory (the only reader of DATABASE_URL).
+``tables``     - SQLAlchemy ORM models.
+``repository`` - every read and write; routes call these, never raw SQL.
 
-Nothing outside this package may import sqlalchemy.
+Nothing outside this package may import SQLAlchemy.
 """

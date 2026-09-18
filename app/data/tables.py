@@ -1,11 +1,7 @@
-"""SQLAlchemy ORM models: the database schema.
+"""SQLAlchemy ORM models for the database schema.
 
-Four tables (columns + rationale in spec.md - "Data Model"):
-
-    uploads     - one row per uploaded file (metadata + processing status)
-    events      - one row per normalized log line (FK -> uploads)
-    anomalies   - one row per detected anomaly (FK -> uploads, optional FK -> events)
-    narratives  - at most one cached LLM brief per upload (FK -> uploads, unique)
+``uploads``, ``events``, ``anomalies``, and ``narratives``; columns and
+rationale are in ``spec.md`` - "Data Model".
 """
 
 from datetime import UTC, datetime
@@ -20,10 +16,12 @@ def _utcnow() -> datetime:
 
 
 class Base(DeclarativeBase):
-    pass
+    """Declarative base for all ORM models."""
 
 
 class Upload(Base):
+    """One uploaded log file and its processing state."""
+
     __tablename__ = "uploads"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -59,6 +57,8 @@ class Upload(Base):
 
 
 class Event(Base):
+    """One normalized web-log event, belonging to an upload."""
+
     __tablename__ = "events"
     __table_args__ = (Index("ix_events_upload_id_timestamp", "upload_id", "timestamp"),)
 
@@ -86,6 +86,8 @@ class Event(Base):
 
 
 class Anomaly(Base):
+    """One anomaly flagged for an upload, optionally tied to an event."""
+
     __tablename__ = "anomalies"
     __table_args__ = (Index("ix_anomalies_upload_id", "upload_id"),)
 

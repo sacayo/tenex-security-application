@@ -1,8 +1,8 @@
-"""Application settings, read from environment variables.
+"""Application settings loaded from environment variables.
 
-One place for deploy-time configuration so no module hardcodes
-environment-specific values. Locally, `python-dotenv` loads `.env`; on
-Railway/Vercel the platform injects real environment variables.
+Single source of deploy-time configuration so no module hardcodes
+environment-specific values. ``python-dotenv`` loads ``.env`` locally; a
+hosted platform injects real variables. See ``.env.example``.
 """
 
 import os
@@ -43,6 +43,8 @@ def _number(name: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class Settings:
+    """Runtime configuration resolved from environment variables."""
+
     database_url: str = field(
         default_factory=lambda: os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
     )
@@ -93,4 +95,5 @@ class Settings:
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return the cached settings instance."""
     return Settings()

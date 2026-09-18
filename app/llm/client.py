@@ -1,23 +1,9 @@
-"""OpenAI-compatible chat-completions client for the vLLM server on Modal.
+"""OpenAI-compatible chat-completions client for the model server.
 
-Deliberately small and synchronous: one `POST /chat/completions`, one
-retry policy, one parsing path. Everything model-specific is here:
-
-- Modal proxy auth: `Authorization: Bearer <token>`. That header is consumed
-  by Modal's proxy, so the vLLM server behind it must NOT also run with
-  `--api-key` or the two would collide.
-- Nemotron 3.5 Lightning reasons by default; we turn it off per request via
-  `chat_template_kwargs.enable_thinking=false`. A five-sentence summary of
-  pre-computed facts has nothing to reason about, and disabling it keeps
-  latency low and removes any interaction with structured output.
-- Structured output via `response_format: json_schema`. If the server
-  rejects/ignores it and we get unparseable text, retry once without it and
-  extract the first balanced JSON object.
-- Cold starts: Modal holds the connection while a scale-to-zero container
-  boots, so a cold start looks like a slow response. The generous read
-  timeout is what absorbs it; a read timeout is therefore terminal (a second
-  full wait would overrun the UI's poll window). Connection resets and 5xx
-  are retried once.
+Sends one ``POST /chat/completions`` with structured output and returns the
+parsed JSON object. Handles proxy Bearer auth, one retry on connection
+reset/5xx, and a terminal read timeout for scale-to-zero cold starts. Server
+contract: ``llm-service/README.md``.
 """
 
 from __future__ import annotations
@@ -60,6 +46,8 @@ class LlmBadResponse(LlmError):
 
 @dataclass(frozen=True)
 class LlmCompletion:
+    """A parsed response, with the reporting model and latency in ms."""
+
     data: dict[str, Any]
     model: str
     latency_ms: int
@@ -76,6 +64,8 @@ class NarrativeClient(Protocol):
 
 
 class OpenAICompatibleClient:
+    """Synchronous OpenAI-compatible client for one model server."""
+
     def __init__(
         self,
         *,
@@ -244,6 +234,7 @@ class OpenAICompatibleClient:
     def complete(
         self, *, system_prompt: str, user_prompt: str, json_schema: dict[str, Any]
     ) -> LlmCompletion:
+        """Send one completion request and return the parsed JSON object."""
         started = time.perf_counter()
 
         payload = self._post(self._body(system_prompt, user_prompt, json_schema))

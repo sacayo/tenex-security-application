@@ -1,11 +1,9 @@
 """HTTP layer: the REST API surface.
 
-Each handler stays *thin*: validate input -> call into `app.service` /
-`app.data.repository` -> return shapes defined in `app.model`. No parsing,
-detection, or SQL in this file.
-
-Contract: spec.md - "API Contract". The frontend in `web/` is built against
-it, so do not deviate without updating spec.md and `web/lib/api.ts`.
+Handlers stay thin: validate input, call ``app.service`` /
+``app.data.repository``, and return ``app.model`` shapes. No parsing,
+detection, or SQL here. Contract: ``spec.md`` - "API Contract"; keep
+``web/lib/api.ts`` in sync.
 """
 
 import logging

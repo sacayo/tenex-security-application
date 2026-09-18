@@ -1,14 +1,9 @@
 """Log parsing pipeline: raw NSS web-log bytes -> list[CanonicalEvent].
 
-Input formats (content-sniffed, extension does not matter):
-  - JSON array of record objects, or a single JSON object
-  - NDJSON (one JSON object per line)
-  - Delimited text (CSV / TSV / pipe) using the Zscaler default
-    "NSS Feed Output Format: Web Logs" column layout — with or without
-    a header row
-
-Field mapping and format gotchas are documented in
-spec.md - "Log Format & Canonical Schema".
+Format is detected from content, not the file extension: a JSON array or
+object, NDJSON, or delimited text (CSV/TSV/pipe) in the Zscaler default
+"NSS Feed Output Format: Web Logs" layout, with or without a header row.
+Field mapping and gotchas: ``spec.md`` - "Log Format & Canonical Schema".
 """
 
 from __future__ import annotations

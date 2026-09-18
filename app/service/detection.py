@@ -1,13 +1,9 @@
 """Rule-based anomaly detection.
 
-Pure functions over parsed events: no database, no FastAPI. Each rule is a
-small function that looks at the whole event list and returns DetectedAnomaly
-objects; `run_rules` simply runs every rule and concatenates the results.
-
-The full rule catalog (thresholds, severities, rationale) is in
-spec.md - "Detection Rules". Stateless rules look at one event at a time;
-aggregate rules (repeated blocks, request bursts) look at the whole list and
-emit `event_index=None`.
+Pure functions over parsed events. Each rule takes the event list and returns
+``DetectedAnomaly`` objects; ``run_rules`` runs them all. Stateless rules
+inspect one event; aggregate rules inspect the whole list and return
+``event_index=None``. Catalog and thresholds: ``spec.md`` - "Detection Rules".
 """
 
 import logging
@@ -51,6 +47,7 @@ def _target(event: CanonicalEvent) -> str:
 
 
 def rule_threat_detected(events: list[CanonicalEvent]) -> list[DetectedAnomaly]:
+    """Flag events that name a threat."""
     hits: list[DetectedAnomaly] = []
     for index, event in enumerate(events):
         if event.threat_name is None:
@@ -73,6 +70,7 @@ def rule_threat_detected(events: list[CanonicalEvent]) -> list[DetectedAnomaly]:
 def rule_high_risk_score(
     events: list[CanonicalEvent], threshold: int = HIGH_RISK_THRESHOLD
 ) -> list[DetectedAnomaly]:
+    """Flag events at or above the risk-score threshold."""
     hits: list[DetectedAnomaly] = []
     for index, event in enumerate(events):
         if event.risk_score < threshold:
@@ -96,6 +94,7 @@ def rule_suspicious_url_category(
     events: list[CanonicalEvent],
     categories: frozenset[str] = SUSPICIOUS_CATEGORIES,
 ) -> list[DetectedAnomaly]:
+    """Flag events in a configured suspicious URL category."""
     hits: list[DetectedAnomaly] = []
     for index, event in enumerate(events):
         if event.url_category not in categories:
@@ -116,6 +115,7 @@ def rule_suspicious_url_category(
 
 
 def rule_dlp_violation(events: list[CanonicalEvent]) -> list[DetectedAnomaly]:
+    """Flag events that matched a DLP dictionary."""
     hits: list[DetectedAnomaly] = []
     for index, event in enumerate(events):
         if event.dlp_dictionary is None:
@@ -138,6 +138,7 @@ def rule_dlp_violation(events: list[CanonicalEvent]) -> list[DetectedAnomaly]:
 def rule_large_upload(
     events: list[CanonicalEvent], bytes_threshold: int = LARGE_UPLOAD_BYTES
 ) -> list[DetectedAnomaly]:
+    """Flag uploads at or above the byte threshold."""
     hits: list[DetectedAnomaly] = []
     for index, event in enumerate(events):
         if event.bytes_sent < bytes_threshold:
@@ -163,6 +164,7 @@ def rule_off_hours(
     start_hour: int = OFF_HOURS_START,
     end_hour: int = OFF_HOURS_END,
 ) -> list[DetectedAnomaly]:
+    """Flag events outside the business-hours window."""
     hits: list[DetectedAnomaly] = []
     for index, event in enumerate(events):
         hour = event.timestamp.hour
@@ -187,6 +189,7 @@ def rule_off_hours(
 def rule_blocked_repeated(
     events: list[CanonicalEvent], threshold: int = REPEATED_BLOCKS_THRESHOLD
 ) -> list[DetectedAnomaly]:
+    """Flag clients blocked repeatedly (aggregate)."""
     counts = Counter(event.client_ip for event in events if event.action == "Block")
     hits: list[DetectedAnomaly] = []
     for client_ip, count in counts.items():
@@ -223,6 +226,7 @@ def rule_request_burst(
     window_seconds: int = BURST_WINDOW_SECONDS,
     threshold: int = BURST_THRESHOLD,
 ) -> list[DetectedAnomaly]:
+    """Flag clients exceeding the request-rate threshold (aggregate)."""
     by_client: defaultdict[str, list[datetime]] = defaultdict(list)
     for event in events:
         by_client[event.client_ip].append(event.timestamp)
