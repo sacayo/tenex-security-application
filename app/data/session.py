@@ -67,3 +67,16 @@ def get_session() -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+def factory_for(session: Session) -> sessionmaker[Session]:
+    """A session factory bound to the same engine as `session`.
+
+    Background tasks outlive the request session that scheduled them and
+    must open their own. Deriving the factory from the live session (rather
+    than using the module-level `SessionLocal`) keeps the test suite's
+    `get_session` override pointing at the throwaway database.
+    """
+    return sessionmaker(
+        bind=session.get_bind(), autoflush=False, expire_on_commit=False
+    )

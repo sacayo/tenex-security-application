@@ -9,6 +9,7 @@ import { formatDateTime } from "@/lib/format";
 import type { SummaryResponse, UploadStatus } from "@/lib/types";
 import AnomalyList from "@/components/AnomalyList";
 import EventsTable from "@/components/EventsTable";
+import NarrativeCard from "@/components/NarrativeCard";
 import StatCards from "@/components/StatCards";
 import TimelineChart from "@/components/TimelineChart";
 import UploadStatusPanel from "@/components/UploadStatusPanel";
@@ -166,6 +167,8 @@ export default function ResultsView({ uploadId }: { uploadId: number }) {
   return (
     <div className="animate-[fadeIn_0.4s_ease-out] space-y-6">
       {header}
+
+      <NarrativeCard uploadId={uploadId} />
 
       <StatCards summary={summary} />
 

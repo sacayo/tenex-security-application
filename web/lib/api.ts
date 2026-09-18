@@ -7,6 +7,7 @@
 
 import type {
   EventPage,
+  NarrativeResponse,
   SummaryResponse,
   UploadResponse,
   UploadStatus,
@@ -83,6 +84,37 @@ export async function getEvents(
     `${API_BASE}/api/uploads/${uploadId}/events?${params.toString()}`,
     { cache: "no-store" },
   );
+  if (!res.ok) throw await toError(res);
+  return res.json();
+}
+
+/**
+ * Request an LLM brief. Idempotent on the server: repeat calls while one is
+ * generating do not schedule another. Resolves with the current state
+ * (202 pending / 200 cached). Throws ApiError on 404 / 409 / 429 / 503 —
+ * callers hide the card on 503 (feature disabled).
+ */
+export async function requestNarrative(
+  uploadId: number,
+  options: { refresh?: boolean; signal?: AbortSignal } = {},
+): Promise<NarrativeResponse> {
+  const params = options.refresh ? "?refresh=true" : "";
+  const res = await fetch(
+    `${API_BASE}/api/uploads/${uploadId}/narrative${params}`,
+    { method: "POST", signal: options.signal },
+  );
+  if (!res.ok) throw await toError(res);
+  return res.json();
+}
+
+export async function getNarrative(
+  uploadId: number,
+  signal?: AbortSignal,
+): Promise<NarrativeResponse> {
+  const res = await fetch(`${API_BASE}/api/uploads/${uploadId}/narrative`, {
+    cache: "no-store",
+    signal,
+  });
   if (!res.ok) throw await toError(res);
   return res.json();
 }

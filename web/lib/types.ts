@@ -95,3 +95,26 @@ export interface SummaryResponse {
   timeline: TimelineBucket[];
   anomalies: AnomalyOut[];
 }
+
+/** LLM narrative brief — mirrors app/model/narrative.py. */
+export type NarrativeStatus = "pending" | "ready" | "failed";
+export type RiskLevel = "none" | "low" | "medium" | "high";
+
+export interface NarrativeSections {
+  headline: string;
+  overview: string;
+  key_findings: string[];
+  recommended_actions: string[];
+}
+
+export interface NarrativeResponse {
+  upload_id: number;
+  status: NarrativeStatus;
+  /** Computed by the backend from anomaly severities, never by the model. */
+  risk_level: RiskLevel;
+  sections: NarrativeSections | null;
+  model: string | null;
+  prompt_version: string | null;
+  generated_at: string | null;
+  error_message: string | null;
+}
