@@ -1,7 +1,7 @@
 # Security Anomaly API
 
 Upload a Zscaler NSS web log. You get back a timeline, a ranked list of
-suspicious events, and an optional summary written in plain English.
+suspicious events, and a summary written in plain English.
 
 A FastAPI backend parses the logs and
 runs 8 rule-based checks. A Next.js dashboard shows the results. One command
@@ -28,7 +28,7 @@ starts the whole stack, and it needs no GPU and no LLM.
 - [Configuration](#configuration)
 - [API](#api)
 - [Detection rules](#detection-rules)
-- [The AI summary](#the-ai-summary-optional)
+- [The AI summary](#the-ai-summary)
 - [Project layout](#project-layout)
 - [Tests](#tests)
 - [Security notes](#security-notes)
@@ -59,8 +59,8 @@ non-specialist can read.
    canonical schema, and runs 8 detection rules.
 3. Results go into PostgreSQL. The dashboard renders a bucketed timeline, stat
    cards, an anomaly list, and a filterable events table.
-4. Optionally, an LLM writes a short brief from the findings. It never sees raw
-   logs, and it cannot add facts.
+4. When the inference endpoint is enabled, an LLM writes a short brief from the
+   findings. It never sees raw logs, and it cannot add facts.
 
 The only supported input is the Zscaler Nanolog Streaming Service (NSS) "Feed
 Output Format: Web Logs". I kept the scope narrow on purpose.
@@ -80,9 +80,9 @@ Output Format: Web Logs". I kept the scope narrow on purpose.
   the chart shows the real time span instead of only the busy ticks.
 - Lets you filter the events table by action, URL category, or "flagged by a
   rule only".
-- Adds an optional AI brief. It is schema-constrained, grounding-checked, and
-  cached per upload. Risk level is computed on the server. The feature is off
-  by default (`LLM_ENABLED=false`).
+- Adds an AI brief. It is schema-constrained, grounding-checked, and cached per
+  upload. Risk level is computed on the server. It is available when the
+  inference endpoint is turned on (`LLM_ENABLED=true`); off by default.
 - Starts with one command. `docker compose up --build` brings up the UI, API,
   and database.
 - Logs a per-request `X-Request-ID` and uses structured stdlib logging.
@@ -151,7 +151,7 @@ and detection finish well under a second. `POST /api/logs` returns
 path. It polls until the status is `completed` or `failed`, so a page reload
 mid-processing resumes cleanly.
 
-### Narrative request lifecycle (optional)
+### Narrative request lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -195,7 +195,7 @@ sequenceDiagram
 | Frontend | **Next.js 15 (App Router)** + **React 19** + **TypeScript** | Server components, a typed API client, and file-based routing. |
 | Styling | **Tailwind CSS** | A consistent dark dashboard UI, built quickly. |
 | Charts | **Recharts** | A composable bar chart for the timeline. |
-| LLM (optional) | **vLLM + Nemotron 3.5 Lightning on Modal** | A 30B/3B-active MoE. It scales to zero and speaks the OpenAI API. |
+| LLM | **vLLM + Nemotron 3.5 Lightning on Modal** | A 30B/3B-active MoE. It scales to zero and speaks the OpenAI API. |
 | Tooling | **uv**, **ruff**, **pytest** | A fast, reproducible Python workflow. |
 
 ---
@@ -290,9 +290,10 @@ curl -F file=@tests/fixtures/sample_nss_csv.txt http://localhost:8000/api/logs
 
 Or drag the file onto the UI, then open the returned `/uploads/{id}` page.
 
-The LLM is optional. With the default `LLM_ENABLED=false`, everything works and
-the AI card is hidden. To turn it on, point `LLM_BASE_URL` and `LLM_API_KEY` at
-any OpenAI-compatible server. See [`llm-service/README.md`](llm-service/README.md).
+The AI summary is available when the inference endpoint is turned on. With the
+default `LLM_ENABLED=false`, everything works and the AI card is hidden. To
+enable it, point `LLM_BASE_URL` and `LLM_API_KEY` at any OpenAI-compatible
+server. See [`llm-service/README.md`](llm-service/README.md).
 
 ### Useful commands
 
@@ -439,7 +440,7 @@ offending event. Aggregate anomalies have no single event.
 
 ---
 
-## The AI summary (optional)
+## The AI summary
 
 The rules produce a list. The narrative layer turns that list into a short brief
 a non-specialist can read. It sits strictly downstream of the detection layer
