@@ -111,7 +111,8 @@ def test_summary_shape(client) -> None:
     assert body["unique_users"] == 5
     assert body["blocked_count"] == 2
     assert body["allowed_count"] == 4
-    assert len(body["timeline"]) == 6
+    assert sum(bucket["event_count"] for bucket in body["timeline"]) == 6
+    assert len(body["timeline"]) == 41
     rules = {anomaly["rule"] for anomaly in body["anomalies"]}
     assert {"threat-detected", "dlp-violation"} <= rules
 

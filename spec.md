@@ -331,8 +331,10 @@ The entire results page in one call:
 ```
 
 **Timeline bucketing**: divide the observed range into ≤ 60 buckets using a
-"nice" width (1m / 5m / 15m / 1h / 6h / 1d). One bucket is fine when all
-events share a timestamp; empty list stays valid (zeroed summary).
+"nice" width (1m / 5m / 15m / 1h / 6h / 1d). Quiet gaps are emitted as
+zero-count buckets so the chart's x-axis is the full window, not only the
+busy ticks. One bucket is fine when all events share a timestamp; empty
+list stays valid (zeroed summary).
 
 ### `POST /api/uploads/{id}/narrative[?refresh=true]` → `NarrativeResponse`
 
