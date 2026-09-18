@@ -93,7 +93,7 @@ flowchart LR
 | Entry point | `app/main.py` | `routes` | service, data internals |
 | HTTP | `app/routes.py` | `service`, `data.repository`, `llm`, `model` | sqlalchemy directly, parsing internals |
 | Logic | `app/service/*` | `model` | FastAPI, sqlalchemy, httpx (pure = testable) |
-| LLM edge | `app/llm/*` | httpx, `service.narrative`, `data.repository`, `model` | FastAPI |
+| LLM edge | `app/llm/*` | httpx, `service.narrative`, `service.timeline`, `data.repository`, `model` | FastAPI |
 | Persistence | `app/data/*` | sqlalchemy, `model` | FastAPI |
 | Schemas | `app/model/*` | pydantic | anything else |
 
@@ -533,9 +533,9 @@ the only caller; the browser never sees the Modal URL or credential.
 **What the model sees.** Only a *facts block* built by
 `service/narrative.build_facts` from the `SummaryResponse`: time range,
 counts, top categories/hosts, and up to 15 anomalies (title + description,
-by severity, with an "and N more" tail). Never raw events, URLs, or user
-agents — this caps tokens, keeps PII off the wire, and makes grounding
-checkable.
+by severity, with an "and N more" tail). Descriptions are sanitized so
+usernames and raw URLs never leave for the model — this caps tokens, keeps
+PII off the wire, and makes grounding checkable.
 
 **Model settings** (`app/llm/client.py`). Nemotron reasons by default; every
 request sends `chat_template_kwargs: {"enable_thinking": false}` because a
@@ -695,11 +695,12 @@ stub docstring links back to the relevant section of this spec.
   secrets in the repo. The model credential lives only on the API host and
   is never sent to the browser.
 - **LLM boundary** (§7.1): the model receives only the derived facts block
-  (counts and rule findings) — never raw events, URLs, or user agents. Its
-  output is schema-constrained and grounding-checked before it is stored,
-  and the card is labelled AI-generated. Regeneration is rate-limited per
-  upload (`LLM_REFRESH_COOLDOWN_SECONDS`) because the endpoint is
-  unauthenticated and each call costs GPU time.
+  (counts and rule findings, with URLs/usernames stripped) — never raw
+  events or user agents. Its output is schema-constrained and
+  grounding-checked before it is stored, and the card is labelled
+  AI-generated. Regeneration is rate-limited per upload
+  (`LLM_REFRESH_COOLDOWN_SECONDS`) because the endpoint is unauthenticated
+  and each call costs GPU time.
 - **Data sensitivity**: web logs contain usernames, IPs, and browsing
   history. This prototype stores them locally only; don't point it at real
   production logs without a conversation about PII.

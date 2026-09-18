@@ -27,13 +27,23 @@ from app.model.summary import AnomalyOut, SummaryResponse
 
 # Bump whenever SYSTEM_PROMPT / build_facts / JSON_SCHEMA change in a way that
 # should invalidate cached narratives. Stored alongside each row.
-PROMPT_VERSION = "2026-09-18.1"
+PROMPT_VERSION = "2026-09-18.2"
 
 MAX_FACT_ANOMALIES = 15
 MAX_DESCRIPTION_CHARS = 300
 
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+# Strip full URLs and bare www hosts from anomaly text before it reaches the
+# model. Hosts already listed in top_hosts stay via that line; IPs stay.
+_URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
+# Detection descriptions use "{username} ({ip})" — replace the login token.
+_ACTOR_IP_RE = re.compile(
+    r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|"
+    r"[A-Za-z][A-Za-z0-9._-]{1,63})\s+(\(\d{1,3}(?:\.\d{1,3}){3}\))"
+)
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
 SYSTEM_PROMPT = """You are a security analyst writing a short brief for a non-specialist reader (an IT manager, not a SOC engineer) about one batch of Zscaler web-proxy logs.
 
@@ -127,6 +137,18 @@ def _truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def _sanitize_for_facts(text: str) -> str:
+    """Remove URLs and login identifiers before text enters the facts block.
+
+    Keeps client IPs (and the ``(ip)`` paren form from detection) so grounding
+    still works. Detection descriptions for the UI are left untouched.
+    """
+    cleaned = _URL_RE.sub("[url]", text)
+    cleaned = _ACTOR_IP_RE.sub(r"user \2", cleaned)
+    cleaned = _EMAIL_RE.sub("user", cleaned)
+    return cleaned
+
+
 def build_facts(summary: SummaryResponse) -> str:
     """Deterministic, compact facts block. Same summary -> same string."""
     lines: list[str] = []
@@ -169,9 +191,11 @@ def build_facts(summary: SummaryResponse) -> str:
         lines.append(f"Anomalies: {total} total, {len(shown)} listed by severity:")
         for anomaly in shown:
             when = f" at {_fmt_time(anomaly.timestamp)}" if anomaly.timestamp else ""
+            title = _sanitize_for_facts(anomaly.title)
+            description = _sanitize_for_facts(anomaly.description)
             lines.append(
-                f"- [{anomaly.severity}] {anomaly.title}{when}: "
-                f"{_truncate(anomaly.description, MAX_DESCRIPTION_CHARS)}"
+                f"- [{anomaly.severity}] {_truncate(title, MAX_DESCRIPTION_CHARS)}"
+                f"{when}: {_truncate(description, MAX_DESCRIPTION_CHARS)}"
             )
         if total > len(shown):
             lines.append(
