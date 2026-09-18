@@ -20,7 +20,7 @@ from app.service.detection import (
     run_rules,
 )
 from app.service.parsing import parse_nss_feed
-from tests.test_parsing import FIXTURE
+from tests.test_parsing import CSV_FIXTURE, FIXTURE
 
 
 def _event(**overrides) -> CanonicalEvent:
@@ -52,6 +52,15 @@ def test_run_rules_on_fixture() -> None:
 
 def test_clean_event_fires_no_rules() -> None:
     assert run_rules([_event()]) == []
+
+
+def test_single_blocked_shopping_event_fires_no_rules() -> None:
+    """A lone Blocked eBay browse (sample-nss-output-logs.txt) is not anomalous."""
+    events = parse_nss_feed(CSV_FIXTURE.read_bytes())
+    assert len(events) == 1
+    assert events[0].action == "Block"
+    assert events[0].url_category == "Online Shopping"
+    assert run_rules(events) == []
 
 
 def test_threat_detected_metadata() -> None:

@@ -94,7 +94,7 @@ def test_record_missing_required_field_is_skipped() -> None:
 
 
 def test_unrecognizable_content_raises() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Unrecognized content"):
         parse_nss_feed(b"this is not json at all")
 
 
@@ -103,6 +103,132 @@ def test_empty_file_raises() -> None:
         parse_nss_feed(b"")
 
 
-def test_csv_nss_output_is_rejected() -> None:
-    with pytest.raises(ValueError):
-        parse_nss_feed(CSV_FIXTURE.read_bytes())
+def test_csv_default_feed_parses() -> None:
+    events = parse_nss_feed(CSV_FIXTURE.read_bytes())
+    assert len(events) == 1
+    event = events[0]
+    assert event.client_ip == "172.17.3.49"
+    assert event.action == "Block"
+    assert event.status_code == 403
+    assert event.host == "ebay.com"
+    assert event.url_category == "Online Shopping"
+    assert event.bytes_sent == 72
+    assert event.risk_score == 0
+    assert event.timestamp == datetime(2022, 6, 20, 15, 29, 11, tzinfo=UTC)
+    assert event.username == "new-gre"
+    assert event.method == "GET"
+    assert event.user_agent == "curl/7.68.0"
+    assert event.threat_name is None
+    assert event.dlp_dictionary is None
+    assert event.raw["appname"] == "Ebay"
+
+
+def test_csv_with_header_row() -> None:
+    header = ",".join(
+        [
+            "time",
+            "login",
+            "cip",
+            "eurl",
+            "action",
+            "reqmethod",
+            "respcode",
+            "urlcat",
+            "threatname",
+            "riskscore",
+            "reqsize",
+            "respsize",
+            "ua",
+            "dlpdict",
+        ]
+    )
+    row = (
+        '"Thu Sep 10 2026 09:15:23","alice","10.1.2.15",'
+        '"https://www.example.com/path","Allowed","GET","200",'
+        '"Search Engines","None","5","512","1024","Mozilla/5.0","None"'
+    )
+    events = parse_nss_feed(f"{header}\n{row}".encode())
+    assert len(events) == 1
+    assert events[0].action == "Allow"
+    assert events[0].client_ip == "10.1.2.15"
+    assert events[0].host == "www.example.com"
+
+
+def test_tsv_default_feed_parses() -> None:
+    # Same fields as the CSV fixture, tab-separated and unquoted.
+    cells = [
+        "Mon Jun 20 15:29:11 2022",
+        "new-gre",
+        "HTTP",
+        "ebay.com/",
+        "Blocked",
+        "Ebay",
+        "Consumer Apps",
+        "72",
+        "14061",
+        "0",
+        "0",
+        "Productivity Loss",
+        "Shopping and Auctions",
+        "Online Shopping",
+        "None",
+        "None",
+        "0",
+        "None",
+        "None",
+        "new-gre",
+        "Default Department",
+        "172.17.3.49",
+        "66.211.175.229",
+        "GET",
+        "403",
+        "curl/7.68.0",
+        "None",
+        "FwFilter",
+        "Firewall_1",
+        "Other",
+        "None",
+        "NA",
+        "NA",
+        "N/A",
+    ]
+    events = parse_nss_feed("\t".join(cells).encode())
+    assert len(events) == 1
+    assert events[0].action == "Block"
+    assert events[0].client_ip == "172.17.3.49"
+    assert events[0].host == "ebay.com"
+
+
+def test_allowed_normalizes_to_allow() -> None:
+    record = {
+        "time": "Thu Sep 10 2026 09:15:23",
+        "cip": "10.0.0.1",
+        "eurl": "https://example.com/",
+        "action": "Allowed",
+        "reqmethod": "GET",
+        "respcode": "200",
+        "riskscore": "0",
+        "reqsize": "0",
+        "respsize": "0",
+    }
+    events = parse_nss_feed(json.dumps([record]).encode())
+    assert events[0].action == "Allow"
+
+
+def test_iso_timestamp_accepted() -> None:
+    record = {
+        "time": "2026-09-10T09:15:23Z",
+        "cip": "10.0.0.1",
+        "eurl": "https://example.com/",
+        "action": "Allow",
+    }
+    events = parse_nss_feed(json.dumps([record]).encode())
+    assert events[0].timestamp == datetime(2026, 9, 10, 9, 15, 23, tzinfo=UTC)
+
+
+def test_wrong_column_count_row_is_skipped() -> None:
+    good = CSV_FIXTURE.read_text().strip()
+    payload = f'{good}\n"Mon Jun 20 15:29:11 2022","too-short"\n'.encode()
+    events = parse_nss_feed(payload)
+    assert len(events) == 1
+    assert events[0].client_ip == "172.17.3.49"

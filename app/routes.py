@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-ALLOWED_EXTENSIONS = {".json", ".log", ".txt"}
+ALLOWED_EXTENSIONS = {".json", ".jsonl", ".ndjson", ".log", ".txt", ".csv", ".tsv"}
 MAX_EVENT_LIMIT = 200
 
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -41,13 +41,16 @@ async def upload_log(
     session: SessionDep,
 ) -> UploadResponse:
     """Accept an NSS web-log file, parse it, detect, and persist everything."""
-    filename = file.filename or "upload.json"
+    filename = file.filename or "upload.log"
     extension = Path(filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         logger.warning("rejected upload: unsupported extension %r", extension)
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{extension}'. Use .json, .log, or .txt.",
+            detail=(
+                f"Unsupported file type '{extension}'. "
+                "Use .json, .jsonl, .ndjson, .log, .txt, .csv, or .tsv."
+            ),
         )
 
     data = await file.read()

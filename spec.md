@@ -93,19 +93,27 @@ frontend↔backend traffic is the REST contract in §5.
 
 ## 3. Log Format & Canonical Schema
 
-### 3.1 Input: Zscaler NSS Web Logs (JSON)
+### 3.1 Input: Zscaler NSS Web Logs
 
 The [Zscaler Nanolog Streaming Service (NSS)](https://help.zscaler.com/zia/nss-feed-output-format-web-logs)
-streams web-proxy logs to a SIEM. Its "Web Logs" feed with the **JSON output
-type** produces one JSON object per web transaction, with keys like
-`time`, `login`, `cip`, `eurl`, `action`, `threatname`, `riskscore`, …
+streams web-proxy logs to a SIEM. Its "Web Logs" feed produces one record per
+web transaction, with fields like `time`, `login`, `cip`, `eurl`, `action`,
+`threatname`, `riskscore`, …
 
-A file may be either:
+A file may be any of:
 
-- a **JSON array**: `[{...}, {...}, {...}]` (NSS "JSON Array Notation"), or
-- **NDJSON**: one JSON object per line.
+- a **JSON array**: `[{...}, {...}, {...}]` (NSS "JSON Array Notation"),
+- **NDJSON**: one JSON object per line, or
+- **Delimited text** (CSV / TSV / pipe): the Zscaler default
+  "NSS Feed Output Format: Web Logs" column layout (34 positional fields),
+  with or without a header row. Content is sniffed; the file extension
+  (`.json`, `.jsonl`, `.ndjson`, `.log`, `.txt`, `.csv`, `.tsv`) does not
+  decide the parser path.
 
-The parser must accept both. Sample file: `tests/fixtures/sample_nss_web.json`.
+Sample files: `tests/fixtures/sample_nss_web.json` (JSON) and
+`tests/fixtures/sample_nss_csv.txt` (default CSV feed).
+
+The parser must accept all of the above.
 
 ### 3.2 Field mapping: NSS → canonical
 
@@ -113,14 +121,14 @@ Everything the rest of the system needs, and nothing it doesn't:
 
 | NSS JSON field | Canonical field | Type | Notes |
 |---|---|---|---|
-| `time` | `timestamp` | `datetime` | e.g. `"Thu Sep 10 2026 09:15:23"` → parse to **timezone-aware UTC** |
+| `time` | `timestamp` | `datetime` | JSON: `"Thu Sep 10 2026 09:15:23"`; CSV: `"Mon Jun 20 15:29:11 2022"`; also ISO-8601. Always **timezone-aware UTC** |
 | `cip` | `client_ip` | `str` | client (source) IP |
-| `login` | `username` | `str \| None` | `"None"` = unauthenticated → `None` |
+| `login` | `username` | `str \| None` | `"None"` / `"N/A"` / `"NA"` → `None` |
 | `reqmethod` | `method` | `str \| None` | GET/POST/… |
 | `eurl` | `url` | `str` | hex-escaped; decode `%20` → space etc. |
-| `ehost` | `host` | `str \| None` | destination hostname |
+| `ehost` | `host` | `str \| None` | destination hostname; if absent (CSV default feed), derived from `eurl` |
 | `respcode` | `status_code` | `int \| None` | `"200"` → `200` |
-| `action` | `action` | `str` | `"Allow"` / `"Block"` |
+| `action` | `action` | `str` | `"Allow"` / `"Block"` (also accepts `"Allowed"` / `"Blocked"`) |
 | `urlcat` | `url_category` | `str \| None` | e.g. `"Gambling"` |
 | `threatname` | `threat_name` | `str \| None` | `"None"` = clean → `None` |
 | `riskscore` | `risk_score` | `int` | 0–100 |
@@ -138,12 +146,19 @@ field into the canonical schema only when a rule or the UI actually needs it.
 1. **Hex-escaping**: URLs/hosts/referrers hex-encode non-printable and
    non-ASCII chars (`%20`, `%0A`, …). Decode them or the UI shows garbage.
 2. **Sentinel values**: NSS writes the literal string `"None"` for empty
-   fields. Normalize to `None`, or `"None"` will pollute stats and user lists.
+   fields; the CSV feed also uses `"N/A"` / `"NA"`. Normalize all of them
+   (and strip surrounding whitespace) to `None`, or they will pollute
+   stats and user lists.
 3. **Numbers arrive as strings**: `"riskscore": "92"` → coerce to `int`.
-4. **Timestamps are local-time strings without a zone**: pick a convention
-   (assume UTC is fine for the prototype), parse with
-   `datetime.strptime(t, "%a %b %d %Y %H:%M:%S")`, and attach `UTC`.
-5. **Partial garbage is normal**: skip malformed records (count them), fail
+4. **Timestamps come in multiple shapes**, all local-time without a zone.
+   Accept `"%a %b %d %Y %H:%M:%S"` (JSON feed),
+   `"%a %b %d %H:%M:%S %Y"` (CSV default feed), and ISO-8601; attach `UTC`.
+5. **Action vocabulary**: JSON feed uses `"Allow"` / `"Block"`; the CSV
+   default feed uses `"Allowed"` / `"Blocked"`. Normalize to the short form
+   so detection and the UI can compare against a single pair.
+6. **Host may be missing**: the CSV default feed has no `ehost` column —
+   derive `host` from `eurl` (strip scheme and path).
+7. **Partial garbage is normal**: skip malformed records (count them), fail
    the upload only when *nothing* parses.
 
 ---
@@ -160,7 +175,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant T as service/timeline.py
 
-    U->>W: choose .json/.log file, click Upload
+    U->>W: choose .json/.log/.txt/.csv file, click Upload
     W->>R: POST /api/logs (multipart/form-data)
     R->>R: validate extension + size (≤ 25 MB)
     R->>P: parse_nss_feed(bytes)
@@ -168,7 +183,13 @@ sequenceDiagram
     R->>D: run_rules(events)
     D-->>R: list[DetectedAnomaly]
     R->>DB: INSERT upload + events + anomalies (one transaction)
-    R-->>W: 201 UploadResponse {id, event_count, anomaly_count}
+    R-->>W: 201 UploadResponse {id, status, counts}
+    opt status is uploaded / parsing
+        loop poll until completed | failed
+            W->>R: GET /api/uploads/{id}
+            R-->>W: UploadStatus
+        end
+    end
     W->>R: GET /api/uploads/{id}/summary
     R->>DB: SELECT events, anomalies
     R->>T: build_summary(events, anomalies)
@@ -177,9 +198,15 @@ sequenceDiagram
     W-->>U: timeline chart + stat cards + anomaly list
 ```
 
-Processing is **synchronous** inside `POST /api/logs`: files are small
-(≤ 25 MB), so parsing + detection finish well under a second and the response
-already contains the final counts. No worker, no polling.
+Processing is **synchronous in the happy path**: files are small (≤ 25 MB),
+so parsing + detection finish well under a second and `POST /api/logs` returns
+`status: "completed"` with the final counts. No worker is required.
+
+The frontend also supports an **async path** for flows where `POST` returns
+`uploaded` or `parsing`: it polls `GET /api/uploads/{id}` (1 s interval, 60 s
+timeout) until the status is `completed` or `failed` before requesting the
+summary. This is also what makes `/uploads/[id]` refresh-safe — reloading while
+a file is still processing resumes polling instead of showing a broken page.
 
 ---
 
@@ -202,9 +229,9 @@ Upload a log file. `multipart/form-data`, field name **`file`**.
     "anomaly_count": 7
   }
   ```
-- **400** — empty file, or unsupported extension (accept `.json`, `.log`, `.txt`).
+- **400** — empty file, or unsupported extension (accept `.json`, `.jsonl`, `.ndjson`, `.log`, `.txt`, `.csv`, `.tsv`).
 - **413** — file over the 25 MB cap.
-- **422** — content isn't recognizable as NSS web-log JSON.
+- **422** — content isn't recognizable as NSS web-log JSON, NDJSON, or delimited (CSV/TSV) output.
 
 ### `GET /api/uploads/{id}` → `UploadStatus`
 
@@ -408,14 +435,22 @@ Next.js (App Router) + TypeScript + Tailwind CSS. Fully implemented against
 this spec; talks to the backend only through the typed client in
 `web/lib/api.ts`.
 
-- **`/` — upload page**: drag & drop zone + file picker, client-side
-  validation (extension, ≤ 25 MB), progress states
-  (`idle → uploading → processing → done | error`), then routes to results.
-- **`/uploads/[id]` — results page**: summary stat cards (totals,
-  blocked/allowed, unique clients/users), bucketed timeline bar chart,
-  anomaly list with severity badges, and a filterable events table.
-- **Mock mode**: `NEXT_PUBLIC_MOCK_API=1` serves fixture data so the UI runs
-  before the backend exists (see `web/lib/mock.ts`).
+- **Routes**: `/` — dark landing hero with the uploader inline; `/upload` —
+  standalone upload page; `/uploads/[id]` — results dashboard; `/demo` —
+  isolated landing-template preview.
+- **Upload flow**: drag & drop zone + file picker, client-side validation
+  (extension, ≤ 25 MB), explicit state machine
+  (`idle → uploading → processing → success | failed | error`). On success it
+  shows a short completion panel with the real event/anomaly counts, then
+  navigates to `/uploads/[id]`.
+- **Processing**: `POST /api/logs` returning `completed` skips polling; any
+  other status polls `GET /api/uploads/{id}` until `completed`/`failed`
+  (`web/lib/uploadStatus.ts`).
+- **`/uploads/[id]` — results page**: status gate, then summary stat cards
+  (totals, blocked/allowed, unique clients/users), bucketed timeline bar chart,
+  anomaly list with severity badges, and a filterable events table. Distinct
+  handling for failed uploads, 404s, network errors (with retry), and
+  zero-event files. Route-level `loading.tsx` + `error.tsx` cover navigation.
 - **Config**: backend URL via `NEXT_PUBLIC_API_URL` (default
   `http://localhost:8000`).
 
@@ -483,7 +518,7 @@ stub docstring links back to the relevant section of this spec.
 - **API**: `fastapi.testclient.TestClient` + dependency override of
   `get_session` (pattern shown in `tests/test_health.py`).
 - **Frontend**: `npm run build` (typecheck + production build) before
-  handoff; manual smoke of upload → results in mock mode.
+  handoff; manual smoke of upload → results against a running backend.
 - Commands: `uv run pytest` (root), `uv run ruff check .`, `npm run build`
   (in `web/`).
 
