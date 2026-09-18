@@ -40,6 +40,11 @@ services:
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
     restart: unless-stopped
+    environment:
+      # UI-only login gate (server-side; needs no rebuild). Empty = gate off.
+      AUTH_USERNAME: ${AUTH_USERNAME:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
     ports:
       - "3000:3000"
     depends_on:

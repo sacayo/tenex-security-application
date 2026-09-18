@@ -1,5 +1,11 @@
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import FileUpload from "@/components/FileUpload";
 import Hero from "@/components/ui/hero";
+import { SESSION_COOKIE, isAuthEnabled, verifySessionValue } from "@/lib/auth";
+
+// Auth state is per-request; never bake it (or the env lookups) at build time.
+export const dynamic = "force-dynamic";
 
 const STEPS = [
   "The file is parsed into normalized events.",
@@ -7,7 +13,14 @@ const STEPS = [
   "You get a timeline, summary stats, and a filterable event table.",
 ];
 
-export default function UploadPage() {
+export default async function UploadPage() {
+  const authEnabled = isAuthEnabled();
+  const loggedIn = authEnabled
+    ? await verifySessionValue((await cookies()).get(SESSION_COOKIE)?.value)
+    : true;
+
+  if (!loggedIn) redirect("/login");
+
   return (
     <div className="min-h-screen bg-black text-white">
       <Hero>
