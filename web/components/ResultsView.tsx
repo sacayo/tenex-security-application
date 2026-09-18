@@ -150,6 +150,7 @@ export default function ResultsView({ uploadId }: { uploadId: number }) {
     return (
       <div className="animate-[fadeIn_0.4s_ease-out] space-y-6">
         {header}
+        <NarrativeCard uploadId={uploadId} />
         <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-10 text-center">
           <p className="font-medium text-white">No events found</p>
           <p className="mt-1 text-sm text-white/60">
