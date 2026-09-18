@@ -22,11 +22,11 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.data import repository
-from app.data.session import get_session
+from app.data.session import factory_for, get_session
 from app.data.tables import Narrative
 from app.llm.client import NarrativeClient, get_llm_client
 from app.llm.generate import generate_narrative, load_summary
@@ -267,10 +267,9 @@ def request_narrative(
     row = repository.mark_narrative_pending(session, upload_id)
     # The request session closes before the task runs; hand it a factory
     # bound to the same engine (keeps the test-DB override working).
-    factory = sessionmaker(
-        bind=session.get_bind(), autoflush=False, expire_on_commit=False
+    background_tasks.add_task(
+        generate_narrative, upload_id, client, factory_for(session)
     )
-    background_tasks.add_task(generate_narrative, upload_id, client, factory)
     logger.info("narrative upload_id=%s scheduled refresh=%s", upload_id, refresh)
     response.status_code = 202
     return _narrative_response(row)

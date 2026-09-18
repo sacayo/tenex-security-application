@@ -53,21 +53,31 @@ flowchart LR
                 sess["session.py<br/>engine + sessions"]
                 tables["tables.py<br/>ORM models"]
             end
+            subgraph llm["llm/ — model edge (§7.1)"]
+                llmclient["client.py<br/>httpx → vLLM"]
+                llmgen["generate.py<br/>background job"]
+            end
             main --> routes
             routes --> parsing
             routes --> detection
             routes --> timeline
             routes --> repo
+            routes -->|"BackgroundTasks"| llmgen
+            llmgen --> llmclient
+            llmgen --> repo
             repo --> tables
             repo --> sess
         end
+
+        modal["vLLM on Modal<br/>Nemotron 3.5 Lightning"]
+        llmclient -->|"Bearer · /v1/chat/completions"| modal
 
         model[/"model/ — Pydantic schemas<br/>shared by every layer"/]
         routes -.->|"request/response shapes"| model
         parsing -.-> model
         detection -.-> model
 
-        db[("PostgreSQL  (:5432)<br/>uploads · events · anomalies")]
+        db[("PostgreSQL  (:5432)<br/>uploads · events · anomalies · narratives")]
         sess --> db
     end
 
@@ -81,10 +91,15 @@ flowchart LR
 | Layer | File(s) | May import | Must NOT import |
 |---|---|---|---|
 | Entry point | `app/main.py` | `routes` | service, data internals |
-| HTTP | `app/routes.py` | `service`, `data.repository`, `model` | sqlalchemy directly, parsing internals |
-| Logic | `app/service/*` | `model` | FastAPI, sqlalchemy (pure = testable) |
+| HTTP | `app/routes.py` | `service`, `data.repository`, `llm`, `model` | sqlalchemy directly, parsing internals |
+| Logic | `app/service/*` | `model` | FastAPI, sqlalchemy, httpx (pure = testable) |
+| LLM edge | `app/llm/*` | httpx, `service.narrative`, `data.repository`, `model` | FastAPI |
 | Persistence | `app/data/*` | sqlalchemy, `model` | FastAPI |
 | Schemas | `app/model/*` | pydantic | anything else |
+
+`app/llm/` is the one impure edge besides `data/`: it owns the HTTP call to
+the model server and the background job around it (§7.1). Prompt text,
+facts building and output validation stay pure in `service/narrative.py`.
 
 The frontend never talks to Postgres; the backend never renders HTML. All
 frontend↔backend traffic is the REST contract in §5.
@@ -319,6 +334,54 @@ The entire results page in one call:
 "nice" width (1m / 5m / 15m / 1h / 6h / 1d). One bucket is fine when all
 events share a timestamp; empty list stays valid (zeroed summary).
 
+### `POST /api/uploads/{id}/narrative[?refresh=true]` → `NarrativeResponse`
+
+Idempotently request the LLM brief (§7.1) for a **completed** upload.
+Generation runs in a FastAPI background task after the response is sent;
+the caller polls `GET` until `status` is terminal.
+
+| Status | Meaning |
+|---|---|
+| `202` | Generation scheduled, or already running (duplicate POSTs never schedule a second job) |
+| `200` | Cached result returned — `ready`, or `failed` (a plain reload never re-hits a down model; Retry sends `refresh=true`) |
+| `404` | Unknown upload |
+| `409` | Upload not `completed` |
+| `429` | `refresh=true` inside `LLM_REFRESH_COOLDOWN_SECONDS` of the last result |
+| `503` | `LLM_ENABLED` is false — the frontend hides the card |
+
+A cached `ready` row is reused only if its `(model, prompt_version)` match
+the current configuration; otherwise it regenerates. A `pending` row older
+than `LLM_TIMEOUT_SECONDS + 60s` is assumed orphaned (process restarted
+mid-generation) and regenerated.
+
+### `GET /api/uploads/{id}/narrative` → `NarrativeResponse`
+
+The cached brief. `404` if never requested. Always `200` otherwise — the
+body's `status` is what to poll on. Applies the same orphaned-`pending`
+rule and flips it to `failed` so the UI never spins forever.
+
+```json
+{
+  "upload_id": 42,
+  "status": "ready",
+  "risk_level": "high",
+  "sections": {
+    "headline": "One malware download was blocked in a short burst of traffic.",
+    "overview": "The logs cover 6 events over about ten hours from 6 clients. ...",
+    "key_findings": ["A known trojan was blocked for carol.davis (10.1.4.22).", "..."],
+    "recommended_actions": ["Check 10.1.4.22 for other signs of compromise.", "..."]
+  },
+  "model": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+  "prompt_version": "2026-09-18.1",
+  "generated_at": "2026-09-18T05:01:12Z",
+  "error_message": null
+}
+```
+
+`status` ∈ `pending | ready | failed`; `sections` is `null` unless `ready`;
+`risk_level` ∈ `none | low | medium | high` is computed in Python from the
+anomaly severities, never by the model.
+
 ### `GET /health`
 
 `{"status": "healthy", "time": "<iso8601>"}` — already implemented in
@@ -332,6 +395,7 @@ events share a timestamp; empty list stays valid (zeroed summary).
 erDiagram
     UPLOADS ||--o{ EVENTS : contains
     UPLOADS ||--o{ ANOMALIES : flags
+    UPLOADS ||--o| NARRATIVES : "summarised by"
     EVENTS o|--o{ ANOMALIES : "evidence for"
 
     UPLOADS {
@@ -375,12 +439,29 @@ erDiagram
         text description
         datetime created_at
     }
+    NARRATIVES {
+        int id PK
+        int upload_id FK "UNIQUE, ON DELETE CASCADE"
+        string status "pending | ready | failed"
+        string model "nullable; 'none' for the canned zero-event brief"
+        string prompt_version "nullable"
+        string risk_level "none | low | medium | high"
+        jsonb content "NarrativeSections, nullable"
+        text error_message "nullable"
+        int latency_ms "nullable"
+        datetime created_at
+        datetime updated_at
+    }
 ```
 
 Notes:
 
 - **Indexes**: `events(upload_id, timestamp)` (timeline + paging),
-  `anomalies(upload_id)` (summary).
+  `anomalies(upload_id)` (summary), `narratives(upload_id)` unique (one
+  cached brief per upload; regenerations overwrite in place).
+- **Narrative cache validity** is `(model, prompt_version)`: bump
+  `PROMPT_VERSION` in `service/narrative.py` to invalidate every cached brief
+  without a migration.
 - **`raw` JSONB** preserves the untouched NSS record — debugging and future
   fields without migrations.
 - **Upload status state machine**: `uploaded → parsing → completed`, or
@@ -427,6 +508,72 @@ Guidance:
 - Later candidates (not in v1): beaconing (regular-interval requests),
   geographic anomalies.
 
+### 7.1 LLM narrative layer
+
+The rules above produce a list; the narrative layer turns that list plus
+the summary stats into a short brief a non-specialist can read. It is
+strictly downstream of the deterministic layer and adds no detections.
+
+```mermaid
+flowchart LR
+    Browser["web/: NarrativeCard"] -->|"POST .../narrative"| API["FastAPI (Railway)"]
+    API --> DB[("narratives cache")]
+    API -->|"Bearer token · enable_thinking=false"| Modal["vLLM on Modal<br/>Nemotron 3.5 Lightning"]
+    Modal -->|"schema-constrained JSON"| API
+    Browser -->|"poll GET until ready"| API
+```
+
+**Where it runs.** Railway has no GPUs, so vLLM serves
+`nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B` (30B total / 3B active,
+hybrid Mamba-2 + MoE) on Modal behind Modal proxy auth. The Railway API is
+the only caller; the browser never sees the Modal URL or credential.
+
+**What the model sees.** Only a *facts block* built by
+`service/narrative.build_facts` from the `SummaryResponse`: time range,
+counts, top categories/hosts, and up to 15 anomalies (title + description,
+by severity, with an "and N more" tail). Never raw events, URLs, or user
+agents — this caps tokens, keeps PII off the wire, and makes grounding
+checkable.
+
+**Model settings** (`app/llm/client.py`). Nemotron reasons by default; every
+request sends `chat_template_kwargs: {"enable_thinking": false}` because a
+five-sentence summary of pre-computed facts has nothing to reason about and
+thinking-off removes any interaction with structured output. `temperature`
+0.2 (NVIDIA's 1.0/0.95 is for reasoning mode), `max_tokens` 800,
+`response_format: json_schema` against `JSON_SCHEMA`. If the output is
+unparseable, one retry without `response_format` extracts the first
+balanced JSON object. `finish_reason == "length"` is a distinct
+`LlmTruncated` error.
+
+**Auth.** `Authorization: Bearer <Modal proxy token>`. Modal's proxy consumes
+that header, so the vLLM server behind it must **not** also run with
+`--api-key` — the two would collide. A `401` is reported with that hint.
+
+**Cold starts.** Modal scales to zero and holds the connection while a
+container boots, so a cold start looks like a slow response. The client
+read timeout (`LLM_TIMEOUT_SECONDS`, default 300) is what absorbs it; a read
+timeout is therefore terminal (no retry — a second full wait would overrun
+the UI's poll window). Connection resets and 5xx retry once.
+
+**Guardrails on output** (`service/narrative.validate_sections`):
+- shape and non-blank checks against `NarrativeSections`;
+- **grounding**: every IPv4 and every `label.tld`-shaped token in the output
+  must appear in the facts block, or the brief is rejected as `failed` with
+  the offending entities named;
+- `risk_level` is computed in Python from severities — the model never sets it;
+- a leading `<think>…</think>` block is stripped defensively (no-op when the
+  server honours `enable_thinking=false`).
+
+**Lifecycle** (`app/llm/generate.py`). Runs as a FastAPI background task with
+its own DB session, never raises, and writes a terminal `ready`/`failed` row
+on every path. Zero-event uploads get a canned brief without a model call.
+Results are cached per upload (§6) and served on every later visit.
+
+**Configuration**: `LLM_ENABLED`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`
+(must equal the server's `--served-model-name`), `LLM_TIMEOUT_SECONDS`,
+`LLM_REFRESH_COOLDOWN_SECONDS` — all in `app/config.py`; see `.env.example`.
+With `LLM_ENABLED=false` the API is unchanged and the card does not render.
+
 ---
 
 ## 8. Frontend (`web/`)
@@ -451,6 +598,14 @@ this spec; talks to the backend only through the typed client in
   anomaly list with severity badges, and a filterable events table. Distinct
   handling for failed uploads, 404s, network errors (with retry), and
   zero-event files. Route-level `loading.tsx` + `error.tsx` cover navigation.
+- **AI summary card** (`web/components/NarrativeCard.tsx`, top of the results
+  page): POSTs `/narrative` on mount (server is idempotent, so React's dev
+  double-mount is harmless) and polls `GET` every 2 s for up to 5 min.
+  Copy escalates: skeleton → after 15 s "warming up the model" → after the
+  window a non-error "still generating, check again". `failed` shows the
+  backend message with **Retry** (`refresh=true`); `429` shows a cooldown
+  notice; `503` hides the card entirely. Labelled "AI-generated" with a
+  risk badge computed server-side and a footer naming the model.
 - **Config**: backend URL via `NEXT_PUBLIC_API_URL` (default
   `http://localhost:8000`).
 
@@ -531,9 +686,18 @@ stub docstring links back to the relevant section of this spec.
   executed or rendered raw.
 - **SQL injection**: all DB access through the SQLAlchemy ORM
   (`app/data/repository.py` is the only query site). No string-built SQL.
-- **CORS**: allow only `http://localhost:3000` (and `:8000` for curl work).
-- **Secrets**: DB credentials come from env vars; compose defaults are
-  local-only dev values — no real secrets in the repo.
+- **CORS**: env-driven (`CORS_ORIGINS` list + optional `CORS_ORIGIN_REGEX`
+  for Vercel preview URLs); defaults to `http://localhost:3000` and `:8000`.
+- **Secrets**: DB credentials and the Modal proxy token (`LLM_API_KEY`) come
+  from env vars; compose defaults are local-only dev values — no real
+  secrets in the repo. The model credential lives only on the API host and
+  is never sent to the browser.
+- **LLM boundary** (§7.1): the model receives only the derived facts block
+  (counts and rule findings) — never raw events, URLs, or user agents. Its
+  output is schema-constrained and grounding-checked before it is stored,
+  and the card is labelled AI-generated. Regeneration is rate-limited per
+  upload (`LLM_REFRESH_COOLDOWN_SECONDS`) because the endpoint is
+  unauthenticated and each call costs GPU time.
 - **Data sensitivity**: web logs contain usernames, IPs, and browsing
   history. This prototype stores them locally only; don't point it at real
   production logs without a conversation about PII.

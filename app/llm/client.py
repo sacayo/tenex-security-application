@@ -135,7 +135,9 @@ class OpenAICompatibleClient:
                 httpx.RemoteProtocolError,
                 httpx.ConnectTimeout,
             ) as exc:
-                last_error = exc
+                last_error = LlmUnavailable(
+                    f"could not reach the model server ({exc.__class__.__name__})"
+                )
                 logger.warning("llm connect failure attempt=%d: %s", attempt, exc)
             except httpx.ReadTimeout as exc:
                 # Terminal on purpose: we already waited the full budget.
