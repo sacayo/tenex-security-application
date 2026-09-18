@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import get_settings
 from app.data import tables
 from app.data.session import engine, log_engine_target
 from app.log_config import (
@@ -31,6 +32,7 @@ from app.log_config import (
 from app.routes import router as api_router
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 @asynccontextmanager
@@ -53,10 +55,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 

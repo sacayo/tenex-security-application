@@ -8,15 +8,13 @@ dependencies = [
     "fastapi[standard]>=0.141.1",
     "passlib>=1.7.4",
     "psycopg[binary]>=3.3.5",
-    "pytest>=9.1.1",
     "python-dotenv>=1.2.3",
     "python-multipart>=0.0.32",
-    "requests>=2.34.2",
-    "ruff>=0.16.7",
     "sqlalchemy>=2.0.54",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.16.7",
 ]

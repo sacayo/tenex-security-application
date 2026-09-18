@@ -124,23 +124,9 @@ def test_csv_default_feed_parses() -> None:
 
 
 def test_csv_with_header_row() -> None:
-    header = ",".join(
-        [
-            "time",
-            "login",
-            "cip",
-            "eurl",
-            "action",
-            "reqmethod",
-            "respcode",
-            "urlcat",
-            "threatname",
-            "riskscore",
-            "reqsize",
-            "respsize",
-            "ua",
-            "dlpdict",
-        ]
+    header = (
+        "time,login,cip,eurl,action,reqmethod,respcode,urlcat,"
+        "threatname,riskscore,reqsize,respsize,ua,dlpdict"
     )
     row = (
         '"Thu Sep 10 2026 09:15:23","alice","10.1.2.15",'

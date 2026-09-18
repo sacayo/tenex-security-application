@@ -115,8 +115,7 @@ def _try_parse_time(value: str) -> datetime | None:
         except ValueError:
             continue
     try:
-        # ISO-8601; treat naive as UTC
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
     if parsed.tzinfo is None:

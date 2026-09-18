@@ -12,10 +12,11 @@ every log record by `RequestIdFilter`, so a single upload's parse -> detect
 
 import logging
 import logging.config
-import os
 import uuid
 from contextvars import ContextVar
 from typing import Any
+
+from app.config import get_settings
 
 _REQUEST_ID: ContextVar[str] = ContextVar("request_id", default="-")
 
@@ -45,7 +46,7 @@ class RequestIdFilter(logging.Filter):
 
 
 def configure_logging() -> None:
-    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level = get_settings().log_level
     sqlalchemy_level = "INFO" if level == "DEBUG" else "WARNING"
 
     config: dict[str, Any] = {
