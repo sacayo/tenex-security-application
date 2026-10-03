@@ -60,7 +60,7 @@ Write:
 Respond with a single JSON object matching the schema you were given and nothing else."""
 
 # Hand-written (rather than derived from the Pydantic model) so the grammar
-# handed to vLLM stays small and only uses widely supported keywords.
+# handed to the model endpoint stays small and only uses widely supported keywords.
 JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {

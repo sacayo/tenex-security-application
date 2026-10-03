@@ -146,8 +146,7 @@ class OpenAICompatibleClient:
                     )
                 elif response.status_code in (401, 403):
                     raise LlmError(
-                        f"authentication rejected ({response.status_code}); check LLM_API_KEY "
-                        "and make sure the server does not also set --api-key"
+                        f"authentication rejected ({response.status_code}); check LLM_API_KEY"
                     )
                 elif response.status_code >= 400:
                     raise LlmBadResponse(

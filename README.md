@@ -159,7 +159,7 @@ sequenceDiagram
     participant R as routes.py
     participant Repo as repository.py
     participant BG as generate.py (background)
-    participant M as vLLM on Modal
+    participant M as Inference endpoint (Modal)
 
     C->>R: POST /api/uploads/{id}/narrative
     R->>Repo: claim_narrative_generation (SELECT ... FOR UPDATE)
@@ -195,7 +195,7 @@ sequenceDiagram
 | Frontend | **Next.js 15 (App Router)** + **React 19** + **TypeScript** | Server components, a typed API client, and file-based routing. |
 | Styling | **Tailwind CSS** | A consistent dark dashboard UI, built quickly. |
 | Charts | **Recharts** | A composable bar chart for the timeline. |
-| LLM | **vLLM + Nemotron 3.5 Lightning on Modal** | A 30B/3B-active MoE. It scales to zero and speaks the OpenAI API. |
+| LLM | **Nemotron 3.5 Lightning on Modal** | A dedicated OpenAI-compatible endpoint; a 30B/3B-active MoE that scales to zero. |
 | Tooling | **uv**, **ruff**, **pytest** | A fast, reproducible Python workflow. |
 
 ---
@@ -326,7 +326,7 @@ the full annotated template.
 | `LLM_ENABLED` | `false` | Master switch for the narrative layer. |
 | `LLM_BASE_URL` | (empty) | OpenAI-compatible base URL, for example `https://...modal.run/v1`. |
 | `LLM_API_KEY` | (empty) | Sent as `Authorization: Bearer ...`. |
-| `LLM_MODEL` | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | Must match the server's `--served-model-name`. |
+| `LLM_MODEL` | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | Must match the model id the endpoint serves. |
 | `LLM_TIMEOUT_SECONDS` | `300` | Per-request timeout, sized to absorb a scale-to-zero cold start. |
 | `LLM_REFRESH_COOLDOWN_SECONDS` | `300` | Minimum gap between forced regenerations (`?refresh=true`). |
 
@@ -464,7 +464,7 @@ and adds no new detections.
   `ready` or `failed` row. A `pending` row older than
   `LLM_TIMEOUT_SECONDS + 60s` is treated as orphaned and recovered.
 
-The model server contract (Modal proxy auth, vLLM flags, smoke test) is in
+The model endpoint contract (Modal proxy auth, request shape, smoke test) is in
 [`llm-service/README.md`](llm-service/README.md).
 
 ---
@@ -499,7 +499,7 @@ security-anomaly-api/
 │   └── fixtures/               #   sample_nss_web.json, sample_nss_csv.txt
 ├── docker/initdb/              # Postgres bootstrap (creates anomaly_test)
 ├── docs/architecture.png       # this diagram
-├── llm-service/README.md       # Modal/vLLM deployment contract
+├── llm-service/README.md       # Model endpoint contract (Modal)
 ├── spec.md                     # design source of truth (architecture, rules, API)
 ├── docker-compose.yml          # db + api + web
 └── pyproject.toml / uv.lock    # Python deps (uv-managed)

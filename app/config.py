@@ -72,9 +72,9 @@ class Settings:
         default_factory=lambda: os.environ.get("LLM_BASE_URL", "").rstrip("/")
     )
     # Sent as `Authorization: Bearer ...`. With Modal proxy auth this is the
-    # Modal token; the vLLM server behind it must NOT also set --api-key.
+    # Modal proxy token.
     llm_api_key: str = field(default_factory=lambda: os.environ.get("LLM_API_KEY", ""))
-    # Must equal the server's --served-model-name.
+    # Must equal the model id the endpoint serves.
     llm_model: str = field(
         default_factory=lambda: os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
     )
